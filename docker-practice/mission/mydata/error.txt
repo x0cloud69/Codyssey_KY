@@ -1,0 +1,128 @@
+
+x0cloud697097@c4r10s7 CODYSSEY26 % rm -rf .git
+x0cloud697097@c4r10s7 CODYSSEY26 % ls -la | grep .git
+x0cloud697097@c4r10s7 CODYSSEY26 % git init
+hint: Using 'master' as the name for the initial branch. This default branch name
+hint: will change to "main" in Git 3.0. To configure the initial branch name
+hint: to use in all of your new repositories, which will suppress this warning,
+hint: call:
+hint:
+hint:   git config --global init.defaultBranch <name>
+hint:
+hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+hint: 'development'. The just-created branch can be renamed via this command:
+hint:
+hint:   git branch -m <name>
+hint:
+hint: Disable this message with "git config set advice.defaultBranchName false"
+Initialized empty Git repository in /Users/x0cloud697097/Codyssey26/.git/
+x0cloud697097@c4r10s7 CODYSSEY26 % git add .
+warning: adding embedded git repository: docker-practice/mission
+hint: You've added another git repository inside your current repository.
+hint: Clones of the outer repository will not contain the contents of
+hint: the embedded repository and will not know how to obtain it.
+hint: If you meant to add a submodule, use:
+hint:
+hint:   git submodule add <url> docker-practice/mission
+hint:
+hint: If you added this path by mistake, you can remove it from the
+hint: index with:
+hint:
+hint:   git rm --cached docker-practice/mission
+hint:
+hint: See "git help submodule" for more information.
+hint: Disable this message with "git config set advice.addEmbeddedRepo false"
+x0cloud697097@c4r10s7 CODYSSEY26 % git commit -m "1.첫번째 과제"
+[master (root-commit) 3108e2b] 1.첫번째 과제
+ 7 files changed, 976 insertions(+)
+ create mode 100644 README.md
+ create mode 160000 docker-practice/mission
+ create mode 100644 "\354\236\205\355\225\231\354\227\260\354\210\230/files/0-1.vscode-beginner-guide.pdf"
+ create mode 100644 "\354\236\205\355\225\231\354\227\260\354\210\230/files/0-2. git-github-beginner-guide.pdf"
+ create mode 100644 "\354\236\205\355\225\231\354\227\260\354\210\230/files/0-3. docker-beginner-guide.pdf"
+ create mode 100644 "\354\236\205\355\225\231\354\227\260\354\210\230/files/Task-1. docker-orbstack-beginner.pdf"
+ create mode 100644 "\354\236\205\355\225\231\354\227\260\354\210\230/files/Task-1. docker-windows-beginner.pdf"
+x0cloud697097@c4r10s7 CODYSSEY26 % pwd
+/Users/x0cloud697097/CODYSSEY26
+x0cloud697097@c4r10s7 CODYSSEY26 % git log --oneline
+3108e2b (HEAD -> master) 1.첫번째 과제
+x0cloud697097@c4r10s7 CODYSSEY26 % git branch -M main
+x0cloud697097@c4r10s7 CODYSSEY26 % git remote add origin https://github.com/x0cloud69/Codyssey_KY.git
+x0cloud697097@c4r10s7 CODYSSEY26 % git push -u origin main --force
+Enumerating objects: 11, done.
+Counting objects: 100% (11/11), done.
+Delta compression using up to 6 threads
+Compressing objects: 100% (9/9), done.
+Writing objects: 100% (11/11), 19.90 MiB | 12.27 MiB/s, done.
+Total 11 (delta 0), reused 0 (delta 0), pack-reused 0 (from 0)
+To https://github.com/x0cloud69/Codyssey_KY.git
+ + 3836fc1...3108e2b main -> main (forced update)
+branch 'main' set up to track 'origin/main'.
+x0cloud697097@c4r10s7 CODYSSEY26 % git --oneline
+unknown option: --oneline
+usage: git [-v | --version] [-h | --help] [-C <path>] [-c <name>=<value>]
+           [--exec-path[=<path>]] [--html-path] [--man-path] [--info-path]
+           [-p | --paginate | -P | --no-pager] [--no-replace-objects] [--no-lazy-fetch]
+           [--no-optional-locks] [--no-advice] [--bare] [--git-dir=<path>]
+           [--work-tree=<path>] [--namespace=<name>] [--config-env=<name>=<envvar>]
+           <command> [<args>]
+x0cloud697097@c4r10s7 CODYSSEY26 % git log --oneline
+3108e2b (HEAD -> main, origin/main) 1.첫번째 과제
+x0cloud697097@c4r10s7 CODYSSEY26 % rm -rf .git
+x0cloud697097@c4r10s7 CODYSSEY26 % ls -la | grep .git
+x0cloud697097@c4r10s7 CODYSSEY26 % git init
+hint: Using 'master' as the name for the initial branch. This default branch name
+hint: will change to "main" in Git 3.0. To configure the initial branch name
+hint: to use in all of your new repositories, which will suppress this warning,
+hint: call:
+hint:
+hint:   git config --global init.defaultBranch <name>
+hint:
+hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+hint: 'development'. The just-created branch can be renamed via this command:
+hint:
+hint:   git branch -m <name>
+hint:
+hint: Disable this message with "git config set advice.defaultBranchName false"
+Initialized empty Git repository in /Users/x0cloud697097/Codyssey26/.git/
+x0cloud697097@c4r10s7 CODYSSEY26 % git add .
+warning: adding embedded git repository: docker-practice/mission
+hint: You've added another git repository inside your current repository.
+hint: Clones of the outer repository will not contain the contents of
+hint: the embedded repository and will not know how to obtain it.
+hint: If you meant to add a submodule, use:
+hint:
+hint:   git submodule add <url> docker-practice/mission
+hint:
+hint: If you added this path by mistake, you can remove it from the
+hint: index with:
+hint:
+hint:   git rm --cached docker-practice/mission
+hint:
+hint: See "git help submodule" for more information.
+hint: Disable this message with "git config set advice.addEmbeddedRepo false"
+x0cloud697097@c4r10s7 CODYSSEY26 % git commit -m "1. 첫번째 과제"
+[master (root-commit) 1b1bef2] 1. 첫번째 과제
+ 7 files changed, 976 insertions(+)
+ create mode 100644 README.md
+ create mode 160000 docker-practice/mission
+ create mode 100644 "\354\236\205\355\225\231\354\227\260\354\210\230/files/0-1.vscode-beginner-guide.pdf"
+ create mode 100644 "\354\236\205\355\225\231\354\227\260\354\210\230/files/0-2. git-github-beginner-guide.pdf"
+ create mode 100644 "\354\236\205\355\225\231\354\227\260\354\210\230/files/0-3. docker-beginner-guide.pdf"
+ create mode 100644 "\354\236\205\355\225\231\354\227\260\354\210\230/files/Task-1. docker-orbstack-beginner.pdf"
+ create mode 100644 "\354\236\205\355\225\231\354\227\260\354\210\230/files/Task-1. docker-windows-beginner.pdf"
+x0cloud697097@c4r10s7 CODYSSEY26 % git log --oneline
+1b1bef2 (HEAD -> master) 1. 첫번째 과제
+x0cloud697097@c4r10s7 CODYSSEY26 % git branch -M main
+x0cloud697097@c4r10s7 CODYSSEY26 % git remote add origin https://github.com/x0cloud69/Codyssey_KY.git
+x0cloud697097@c4r10s7 CODYSSEY26 % git push -u origin main --force
+Enumerating objects: 11, done.
+Counting objects: 100% (11/11), done.
+Delta compression using up to 6 threads
+Compressing objects: 100% (9/9), done.
+Writing objects: 100% (11/11), 19.90 MiB | 13.59 MiB/s, done.
+Total 11 (delta 0), reused 0 (delta 0), pack-reused 0 (from 0)
+To https://github.com/x0cloud69/Codyssey_KY.git
+ + 3108e2b...1b1bef2 main -> main (forced update)
+branch 'main' set up to track 'origin/main'.
+x0cloud697097@c4r10s7 CODYSSEY26 % 
