@@ -1,8 +1,12 @@
 import json
 import os
 import random
+import shutil
+import sys
 
 STATE_FILE = "state.json"
+BACKUP_FILE = "state.json.bak"
+BACKUP_PREV_FILE = "state.json.bak.prev"
 
 # 초기문제 항목 리스트로 초기화화
 DEFAULT_QUIZZES = [
@@ -63,16 +67,38 @@ class QuizGame:
 
     # ── 파일 저장/불러오기 ──────────────────────────────
 
+    def _read_state_file(self, path: str) -> tuple[list[Quiz], int]:
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        quizzes = [Quiz.from_dict(q) for q in data.get("quizzes", [])]
+        high_score = data.get("high_score", 0)
+        return quizzes, high_score
+
     def _load_state(self) -> None:
         if os.path.exists(STATE_FILE):
             try:
-                with open(STATE_FILE, "r", encoding="utf-8") as f:
-                   data = json.load(f)
-                self.quizzes = [Quiz.from_dict(q) for q in data.get("quizzes", [])]
-                self.high_score = data.get("high_score", 0)
+                self.quizzes, self.high_score = self._read_state_file(STATE_FILE)
                 return
-            except (json.JSONDecodeError, KeyError):
-                print("⚠ 저장 파일을 불러오는 중 오류가 발생했습니다. 기본 데이터를 사용합니다.")
+            except (json.JSONDecodeError, KeyError, OSError):
+                print("⚠ 저장 파일(state.json)을 불러오는 중 오류가 발생했습니다. 백업을 확인합니다.")
+
+        if os.path.exists(BACKUP_FILE):
+            try:
+                self.quizzes, self.high_score = self._read_state_file(BACKUP_FILE)
+                print("✅ 백업 파일(state.json.bak)로부터 데이터를 복구했습니다.")
+                self._save_state()
+                return
+            except (json.JSONDecodeError, KeyError, OSError):
+                print("⚠ 백업 파일(state.json.bak)도 불러오지 못했습니다. 이전 백업을 확인합니다.")
+
+        if os.path.exists(BACKUP_PREV_FILE):
+            try:
+                self.quizzes, self.high_score = self._read_state_file(BACKUP_PREV_FILE)
+                print("✅ 이전 백업(state.json.bak.prev)으로부터 데이터를 복구했습니다.")
+                self._save_state()
+                return
+            except (json.JSONDecodeError, KeyError, OSError):
+                print("⚠ 이전 백업도 불러오지 못했습니다. 기본 데이터를 사용합니다.")
 
         self.quizzes = [Quiz.from_dict(q) for q in DEFAULT_QUIZZES]
         self.high_score = 0
@@ -83,8 +109,25 @@ class QuizGame:
             "quizzes": [q.to_dict() for q in self.quizzes],
             "high_score": self.high_score,
         }
-        with open(STATE_FILE, "w", encoding="utf-8") as f:
+        tmp_file = f"{STATE_FILE}.tmp"
+
+        if os.path.exists(STATE_FILE):
+            try:
+                shutil.copy2(STATE_FILE, BACKUP_PREV_FILE)
+            except OSError:
+                pass
+
+        with open(tmp_file, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
+            f.flush()
+            os.fsync(f.fileno())
+
+        try:
+            shutil.copy2(tmp_file, BACKUP_FILE)
+        except OSError:
+            pass
+
+        os.replace(tmp_file, STATE_FILE)
 
     # ── 메뉴 ───────────────────────────────────────────
 
@@ -212,7 +255,20 @@ class QuizGame:
 # 
 
 if __name__ == "__main__":
-    game = QuizGame()
-    game.run()
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")
+    except Exception:
+        pass
+    game: QuizGame | None = None
+    try:
+        game = QuizGame()
+        game.run()
+    except KeyboardInterrupt:
+        print("\n\n⚠ Ctrl+C 감지: 저장 후 안전하게 종료합니다.")
+        if game is not None:
+            try:
+                game._save_state()
+            except Exception:
+                pass
 
 # %%
