@@ -259,16 +259,26 @@ if __name__ == "__main__":
         sys.stdout.reconfigure(encoding="utf-8")
     except Exception:
         pass
-    game: QuizGame | None = None
-    try:
-        game = QuizGame()
-        game.run()
-    except KeyboardInterrupt:
-        print("\n\n⚠ Ctrl+C 감지: 저장 후 안전하게 종료합니다.")
-        if game is not None:
+    game = QuizGame()
+    while True:
+        try:
+            game.run()
+            break
+        except KeyboardInterrupt:
+            print("\n\n⚠ Ctrl+C 감지")
             try:
-                game._save_state()
-            except Exception:
-                pass
+                confirm = input("정말 종료할까요? (y/N): ").strip().lower()
+            except KeyboardInterrupt:
+                confirm = "y"
+
+            if confirm in ("y", "yes"):
+                print("저장 후 안전하게 종료합니다.")
+                try:
+                    game._save_state()
+                except Exception:
+                    pass
+                break
+
+            print("계속 진행합니다.")
 
 # %%
