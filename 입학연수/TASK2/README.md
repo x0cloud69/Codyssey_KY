@@ -398,6 +398,254 @@ def check_answer(self, user_input: str) -> bool:
 > `pass` 는 아무것도 안 하고 넘어가라는 의미 — 오류를 무시하고 싶을 때 사용.
 
 ---
+# 파이썬 데코레이터(Decorator) 종류 정리
+
+---
+
+## 데코레이터란?
+
+함수나 클래스 위에 `@` 기호로 붙여서 **기능을 추가하거나 변경**하는 문법.
+
+```python
+@데코레이터
+def 함수():
+    ...
+```
+
+---
+
+## 1. 내장 데코레이터 (Built-in)
+
+파이썬 기본 제공, import 없이 사용 가능.
+
+### `@classmethod`
+
+- 객체 없이 **클래스 이름으로 바로 호출** 가능
+- 첫 번째 인자로 `cls` (클래스 자체) 를 받음
+- 주로 **다양한 방법으로 객체를 만들 때** 사용
+
+```python
+class Person:
+    def __init__(self, name, age):
+        self.name = name
+        self.age = age
+
+    @classmethod
+    def from_dict(cls, data):
+        return cls(data["name"], data["age"])
+
+# 객체 없이 바로 호출
+p = Person.from_dict({"name": "홍길동", "age": 25})
+```
+
+---
+
+### `@staticmethod`
+
+- 객체도 클래스도 받지 않음 (`self`, `cls` 없음)
+- **클래스와 관련은 있지만 객체 데이터가 필요없는 기능**을 묶어둘 때 사용
+- 클래스 밖 일반 함수와 동작은 동일
+
+```python
+class Calculator:
+    @staticmethod
+    def add(a, b):
+        return a + b    # self, cls 없이 그냥 계산
+
+# 객체 없이 호출
+Calculator.add(3, 5)    # 8
+```
+
+---
+
+### `@property`
+
+- 메서드를 **변수처럼** 접근하게 해줌
+- 괄호 없이 호출 가능
+- getter / setter / deleter 로 구성
+
+```python
+class Person:
+    def __init__(self, name):
+        self._name = name
+
+    @property
+    def name(self):             # getter
+        return self._name
+
+    @name.setter
+    def name(self, value):      # setter
+        if len(value) > 0:
+            self._name = value
+
+p = Person("홍길동")
+print(p.name)       # 괄호 없이 접근 (getter 호출)
+p.name = "김철수"   # 값 변경 (setter 호출)
+```
+
+---
+
+### 세 가지 비교
+
+| | `@classmethod` | `@staticmethod` | `@property` |
+|---|---|---|---|
+| 첫 번째 인자 | `cls` (클래스) | 없음 | `self` (객체) |
+| 객체 필요 여부 | 불필요 | 불필요 | 필요 |
+| 주요 용도 | 객체 생성 | 관련 기능 묶기 | 변수처럼 접근 |
+| 호출 방법 | `Class.method()` | `Class.method()` | `obj.attr` |
+
+---
+
+## 2. 직접 만드는 데코레이터 (Custom)
+
+함수를 감싸서 **실행 전후에 기능을 추가**할 때 사용.
+
+### 기본 구조
+
+```python
+def 데코레이터(func):
+    def wrapper(*args, **kwargs):
+        # 실행 전 처리
+        result = func(*args, **kwargs)
+        # 실행 후 처리
+        return result
+    return wrapper
+
+@데코레이터
+def 함수():
+    ...
+```
+
+### 실행 시간 측정 예제
+
+```python
+import time
+
+def timer(func):
+    def wrapper(*args, **kwargs):
+        start = time.time()
+        result = func(*args, **kwargs)
+        end = time.time()
+        print(f"실행 시간: {end - start:.4f}초")
+        return result
+    return wrapper
+
+@timer
+def slow_function():
+    time.sleep(1)
+    print("완료")
+
+slow_function()
+# 완료
+# 실행 시간: 1.0012초
+```
+
+### 로그 출력 예제
+
+```python
+def logger(func):
+    def wrapper(*args, **kwargs):
+        print(f"[호출] {func.__name__} 시작")
+        result = func(*args, **kwargs)
+        print(f"[완료] {func.__name__} 종료")
+        return result
+    return wrapper
+
+@logger
+def greet(name):
+    print(f"안녕하세요, {name}!")
+
+greet("홍길동")
+# [호출] greet 시작
+# 안녕하세요, 홍길동!
+# [완료] greet 종료
+```
+
+---
+
+## 3. 표준 라이브러리 데코레이터
+
+import 필요, 설치는 불필요.
+
+### `@functools.wraps`
+
+커스텀 데코레이터 만들 때 **원본 함수 정보를 유지**해주는 데코레이터.
+
+```python
+from functools import wraps
+
+def logger(func):
+    @wraps(func)            # 없으면 func.__name__ 이 wrapper 로 바뀜
+    def wrapper(*args, **kwargs):
+        print(f"{func.__name__} 호출")
+        return func(*args, **kwargs)
+    return wrapper
+```
+
+### `@functools.lru_cache`
+
+함수 결과를 **캐싱**해서 같은 입력이면 다시 계산하지 않음.
+
+```python
+from functools import lru_cache
+
+@lru_cache(maxsize=128)
+def fibonacci(n):
+    if n < 2:
+        return n
+    return fibonacci(n-1) + fibonacci(n-2)
+
+fibonacci(100)   # 캐싱 덕분에 빠르게 계산
+```
+
+### `@dataclasses.dataclass`
+
+클래스에 **`__init__`, `__repr__` 등을 자동 생성**해줌.
+
+```python
+from dataclasses import dataclass
+
+@dataclass
+class Point:
+    x: float
+    y: float
+
+p = Point(1.0, 2.0)
+print(p)   # Point(x=1.0, y=2.0)
+# __init__ 을 직접 안 써도 자동 생성됨
+```
+
+---
+
+## 4. 데코레이터 여러 개 쌓기
+
+```python
+@logger
+@timer
+def my_func():
+    ...
+
+# 아래와 동일
+my_func = logger(timer(my_func))
+
+# 실행 순서: 위에서부터 적용, 안쪽부터 실행
+# timer → logger 순으로 감싸짐
+```
+
+---
+
+## 정리
+
+| 종류 | 예시 | 용도 |
+|---|---|---|
+| 내장 | `@classmethod` | 객체 없이 클래스로 호출 |
+| 내장 | `@staticmethod` | 관련 기능 묶기 |
+| 내장 | `@property` | 메서드를 변수처럼 |
+| 커스텀 | `@timer`, `@logger` | 실행 전후 기능 추가 |
+| 표준 라이브러리 | `@lru_cache` | 결과 캐싱 |
+| 표준 라이브러리 | `@dataclass` | 클래스 자동 생성 |
+
+
 
 
 # Git 기초 정리
