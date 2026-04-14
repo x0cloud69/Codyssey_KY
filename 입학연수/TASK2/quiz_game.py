@@ -11,6 +11,8 @@ BACKUP_PREV_FILE = "state.json.bak.prev"
 # 초기문제 항목 리스트로 초기화화
 DEFAULT_QUIZZES = [
     {"question": "파이썬에서 리스트를 정렬하는 내장 함수는?", "answer": "sort", "options": ["sort", "order", "arrange", "rank"]},
+    {"question": "파이썬에서 리스트를 정렬하는 내장 함수는?", "answer": "sort", "options": ["sort", "order", "arrange", "rank"]},
+    {"question": "파이썬에서 리스트를 정렬하는 내장 함수는?", "answer": "sort", "options": ["sort", "order", "arrange", "rank"]},
     {"question": "파이썬에서 딕셔너리의 키 목록을 반환하는 메서드는?", "answer": "keys", "options": ["keys", "values", "items", "get"]},
     {"question": "파이썬에서 반복 가능한 객체의 길이를 반환하는 내장 함수는?", "answer": "len", "options": ["len", "size", "count", "length"]},
     {"question": "파이썬에서 문자열을 정수로 변환하는 함수는?", "answer": "int", "options": ["int", "str", "float", "cast"]},
@@ -278,7 +280,7 @@ if __name__ == "__main__":
                 except Exception:
                     pass
                 break
-
+EOFError:
             print("계속 진행합니다.")
 
 # %%
