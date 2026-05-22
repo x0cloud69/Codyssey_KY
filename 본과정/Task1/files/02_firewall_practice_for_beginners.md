@@ -188,6 +188,11 @@
 
 ## 5. UFW 실습 단계
 
+### Step 0. Mac 에서 Docker 접속
+docker run -it --cap-add=NET_ADMIN ubuntu /bin/bash
+
+###
+
 ### Step 1. UFW 설치
 
 #### 🎯 목적
