@@ -124,6 +124,7 @@ Docker version 27.x.x
 #### ⌨️ 명령어
 ```bash
 docker run -it --name ubuntu-ssh ubuntu:latest bash
+docker run -it --cap-add=NET_ADMIN ubuntu /bin/bash
 ```
 
 #### 🔍 한 단어씩 뜯어보기
