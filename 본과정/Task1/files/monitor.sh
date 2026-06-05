@@ -21,7 +21,7 @@ rotate_log() {
   if [ -f "$LOG_FILE" ] && [ "$(stat -c%s "$LOG_FILE")" -ge 10485760 ]; then
     for i in 9 8 7 6 5 4 3 2 1; do
       [ -f "${LOG_FILE}.${i}" ] && mv "${LOG_FILE}.${i}" "${LOG_FILE}.$((i + 1))"
-    done
+    doneㅣ
     mv "$LOG_FILE" "${LOG_FILE}.1"
     touch "$LOG_FILE"
   fi
