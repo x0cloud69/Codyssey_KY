@@ -7,9 +7,16 @@ SSH : Secure Shell 원격컴퓨터에 접속할 때 사용하는 통신 번호
 접속방법 : ssh user@서버주소
 SSH 서버 설치 : apt install openssh-server -y
 현재 SSH 포트 확인 방법 : vim /etc/ssh/sshd_config
+
 Port 20022 <--여기 
 #PermitRootLogin prohibit-password
 PermitRootLogin no  <-- 여기 
+```
+sshd 재시작
+```
+pkill sshd
+mkdir -p /run/sshd
+/usr/sbin/sshd
 ```
 ![docker port변경](images/1_sshd_config.png) 
 
@@ -20,12 +27,25 @@ PermitRootLogin no  <-- 여기
 4. 새로운 터미널에서  : ssh -p 20022 root@localhost
 5. 컨테이너 진입      : docker exec -it ssh-server bash 
 
+#### 컨테이너 만들어진 상태에서
+1. docker start ubuntu-ssh  (Docker 실행)
+2. docker exec -it ubuntu-ssh /bin/bash  (컨테이너 내부 접속)
+3. vim /etc/ssh/sshd_config  (환경변수 확인 , Port , root Permission)
+4. /usr/sbin/sshd -D -p 20022 (컨테이너 내에서 sshd 실행)
+5. 외부 터니널에서
+6. ssh -p 20022 root@127.0.01  (접속여부 확인)
+  
 ![Root 원격 접속 차단](images/2_Root_Permission.png) 
+
+![Root 원격 접속](images/2_1_Root_Permit.png) 
 
 ### 방화벽이 활성화되어 있고(택1: UFW 또는 firewalld), 20022/tcp와 15034/tcp만 허용되는가?
 
  Docker 접속
 docker run -it --cap-add=NET_ADMIN ubuntu /bin/bash
+```
+
+```
 
 ```text
 1단계: UFW 설치만 (아직 켜지 마!) : apt install ufw -y
@@ -39,14 +59,28 @@ docker run -it --cap-add=NET_ADMIN ubuntu /bin/bash
     ufw allow 20022/tcp
 
 4단계: 그 외 필요한 포트(15034) 룰 추가
-   ufwl allow 15034/tcp
+   ufw allow 15034/tcp
 
 5단계: 룰이 다 들어갔는지 확인
 6단계: 그제서야 UFW 활성화 (enable)
    ufw enable
 ```
 
+```
+확인 방법
+1. apt install -y netcat-openbsd   (nc 설치)
+2. apt install -u iproute2         ()
+3. nc -lk -p 20022 &
+   nc -lk -p 15034 &
+   nc -lk -p 18080 &
+4. ss lntp  (확인)
+```
 ![ufw 설정](images/7_ufw_enable.png) 
+
+![컨테이너 확인인](images/2_2_ufw_nc.png) 
+
+![Poweshell 확인인](images/2_3_ufw_pc.png) 
+
 
 
 
@@ -120,15 +154,26 @@ docker run -it --cap-add=NET_ADMIN ubuntu /bin/bash
   # AGENT_HOME 자체와 그 안 디렉토리들의 소유자를 agent-admin으로
     chown -R agent-admin:agent-admin /home/agent-admin/agent-app
 
+
 # upload_files → 그룹을 agent-common으로
     chown agent-admin:agent-common /home/agent-admin/agent-app/upload_files
 
 # api_keys → 그룹을 agent-core로
     chown agent-admin:agent-core /home/agent-admin/agent-app/api_keys
 
-# /var/log/agent-app → 그룹을 agent-core로
-    chown agent-admin:agent-core /var/log/agent-app
 ```
+### AGENT_HOME 자체와 그 안 디렉토리들의 소유자를 agent-admin으로
+chown -R agent-admin:agent-admin /home/agent-admin/agent-app
+```
+-R           : recursice , 즉 재귀 적용 대상 디렉토리 안의 모든파일 과 그 안의 모든 하위 디렉토리 
+chown        : change owner, 파일/디렉토리 소유자 변경 명령
+agent-admin  : 소유자 사용자(owner)를 agent-admin으로 설정
+agent-common : 소유 그룹(group)을 agent-common으로 설정
+/home/agent-admin/agent-app/upload_files : 변경할 대상 디렉토리
+```
+
+### /var/log/agent-app → 그룹을 agent-core로
+    chown agent-admin:agent-core /var/log/agent-app
 ![소유자와 그룹](images/b_chown.png) 
 
 ```
@@ -157,6 +202,8 @@ docker run -it --cap-add=NET_ADMIN ubuntu /bin/bash
 ```
    # 기본 권한 외에 ACL로 추가 권한 설정 + `getfacl` 결과 확보 
    # upload_files: agent-common 그룹이 새 파일을 만들어도 자동으로 그룹 권한 유지
+   # apt install -y acl
+   
      setfacl -d -m g:agent-common:rwx /home/agent-admin/agent-app/upload_files
 
    # api_keys: 디폴트 ACL로 agent-core 그룹 권한 자동 상속
@@ -183,19 +230,31 @@ docker run -it --cap-add=NET_ADMIN ubuntu /bin/bash
 
  1. 첨부파일 다운로드
  2. uname -m >> x86_64 가 나노면 agent-app-linux-x86 파일
- 3. docker cp C:\Codyssey26\본과정\Task1\agent-app\agent-app-linux-x86 elastic_elion:/home/agent-admin/agent-app/bin/agent-app
+ 3. docker cp C:\Codyssey26\본과정\Task1\agent-app\agent-app-linux-x86 ubuntu-ufw:/home/agent-admin/agent-app/bin/agent-app
  4. chown agent-admin:agent-admin /home/agent-admin/agent-app/bin/agent-app
  5. chmod 750 /home/agent-admin/agent-app/bin/agent-app
  6. vim ~/.bashrc
-    : export AGENT_KEY_PATH=$AGENT_HOME/api_keys/t_secret.key >> export AGENT_KEY_PATH=$AGENT_HOME/api_keys
- 7. mv /home/agent-admin/agent-app/api_keys/t_secret.key /home/agent-admin/agent-app/api_keys/secret.key
+    : "export AGENT_KEY_PATH=$AGENT_HOME/api_keys/t_secret.key >> export AGENT_KEY_PATH=$AGENT_HOME/api_keys" (아님)
+  
+    export AGENT_HOME=/home/agent-admin/agent-app
+    export AGENT_KEY_PATH=$AGENT_HOME/api_keys/t_secret.key
+ 6-1. echo "agent_api_key_test" > /home/agent-admin/agent-app/api_keys/t_secret.key
+
+ 1. mv /home/agent-admin/agent-app/api_keys/t_secret.key /home/agent-admin/agent-app/api_keys/secret.key
     chown agent-admin:agent-core /home/agent-admin/agent-app/api_keys/secret.key
     chmod 640 /home/agent-admin/agent-app/api_keys/secret.key
- 8. source ~/.bashrc
- 9. cd $AGENT_HOME
+ 1-1. vim ~/.bashrc 에 아래 추가
+      export AGENT_HOME=/home/agent-admin/agent-app
+      export AGENT_PORT=15034
+      export AGENT_UPLOAD_DIR=$AGENT_HOME/upload_files
+      export AGENT_KEY_PATH=$AGENT_HOME/api_keys/t_secret.key
+      export AGENT_LOG_DIR=/var/log/agent-app
+ 1-2. su - agent-admin (계정을 agent-admin 으로 실행)
+ 2. source ~/.bashrc
+ 3. cd $AGENT_HOME
      ./bin/agent-app
-![Boot Sequence](images/f_bootsequence.png) 
-![ss_tulnp](images/g_tulnp.png)
+
+![Boot Sequence](images/f_bootsequence.png)  
 
 
 

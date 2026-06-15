@@ -23,6 +23,9 @@ docker run -d --name agent-leak-lab -p 15034:15034 -e MEMORY_LIMIT=256 agent-lea
  2-3.  --name agent-leak-lab : 컨테이너 이름을 agent-leak-lab 으로 지정
  2-4.  -p 15034:15034        : 포트 연결 (-p 내PC포트:컨테이너포트)
  2-5.  -e MEMORY_LIMIT=256   : 환경변수를 컨테이너 실행 시점에 지정하는 옵션 (-e 환경변수이름=값)
+
+ docker ps -a --filter "name=agent-leak-lab"  >> 현재 컨테이너 확인 방법
+ docker start agent-leak-lab   >> 기존 컨테이너 실행 
 ```
 3. 이미 실행중인 컨테이너 안에서 monitor.sh 를 백그라운드로 실행해서 관제로그를 남기는 명령
 ```
