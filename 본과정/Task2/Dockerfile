@@ -29,11 +29,12 @@ FROM ubuntu:latest
 #                              : apt-get update를 하면 /var/lib/apt/lists/ 아래에 패키지 목록 파일들이 저장장
 #---------------------------------------------------------------------------------------
 
-RUN apt-get update && apt-get install -y \   
-    procps \   
+RUN apt-get update && apt-get install -y \
+    procps \
     iproute2 \
-    net-tools \ 
+    net-tools \
     curl \
+    vim \
     bash \
     && rm -rf /var/lib/apt/lists/*
 
