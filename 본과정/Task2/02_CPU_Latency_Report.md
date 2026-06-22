@@ -29,69 +29,43 @@
 
 `CpuWorker`가 보고한 CPU 부하. OOM의 메모리(일정한 선형 증가)와 달리, **점진적으로 상승**하며 중간 정체 구간이 있다.
 
-| 시각 | 경과(초) | CPU Load |
-|---|---:|---:|
-| 10:39:30 | 0 | 5.00% |
-| 10:39:33 | 3 | 14.47% |
-| 10:39:38 | 8 | 23.42% |
-| 10:39:41 | 11 | 29.43% |
-| 10:39:44 | 14 | 35.60% |
-| 10:39:47 | 17 | 38.49% |
-| 10:39:50 | 20 | 38.97% |
-| 10:39:53 | 23 | 45.82% |
-| 10:39:56 | 26 | **52.79% → 임계 위반** |
+powershell 에서
+docker run -it --rm -p 15034:15034 -e MEMORY_LIMIT=512 --entrypoint /bin/bash agenet-leak-app:latest
+./agent-leak-app-x86
+
+![CPU WORKER](image/B_cpu_worker.png)
 
 ### 2-2. 부팅 자원 점검 및 임계 위반 로그 발췌
 
 자원 점검 단계 — 메모리는 OK, CPU만 경고:
 
-```text
-==================================================
- [ Agent Initiate ] Resource Check
-==================================================
- [ MEMORY ] Limit: 512MB   [ OK ]
- [ CPU    ] Limit: 80%      [ WARNING: Recommend Under 50% ]
- [ THREAD ] Concurrency: True [ WARNING ]
-```
+![CPU WORKER](image/B_cpu_worker_1.png)
+
+
 
 CpuWorker 동작 및 임계 위반:
 
-```text
-2026-06-16 10:39:30,396 [INFO] [CpuWorker] Started. Maximum CPU Limit: 80%
-2026-06-16 10:39:30,397 [INFO] [CpuWorker] Current Load: 5.00%
-...
-2026-06-16 10:39:56,680 [INFO] [CpuWorker] Current Load: 52.79%
-2026-06-16 10:39:56,784 [CRITICAL] [CpuWorker] CPU Threshold Violated! (52.79%)
-```
+![CPU WORKER](image/B_cpu_worker_2.png)
+
 
 ### 2-3. 종료(Watchdog / SIGTERM) 로그
 
-> ⚠️ **직접 채워야 하는 부분.** 현재 캡처는 `CPU Threshold Violated!` 직후에서 끊겼다. 미션 요건상 **과점유 방지 정책(Watchdog)이 SIGTERM으로 종료시키는 로그**가 필요하다. 동일 명령으로 재실행하여 위반 이후 라인까지 전체 로그를 확보할 것.
 
-```bash
-# 메모리 경고를 OK로 만들어 CPU 시나리오 트리거 → 전체 로그 저장
-docker run --name agent-cpu -e MEMORY_LIMIT=512 -p 15034:15034 agent-leak-app:latest
-docker logs agent-cpu > app_cpu.log         # 위반 이후 WATCHDOG/SIGTERM 라인 포함 확보
-```
+![종료](image/B_cpu_worker_3.png)
 
-*(예상 로그 형태: `[Watchdog] CPU overuse ... sending SIGTERM` 등 — 실제 캡처로 교체)*
+
 
 ### 2-4. 시스템 도구(top / monitor.sh)의 CPU 수치
 
-> ⚠️ **직접 채워야 하는 부분.** `ps`의 `%cpu`는 생애 평균이라 순간 스파이크를 놓치므로, **순간 CPU는 `top`으로** 잡는 것이 정확하다. CpuWorker가 도는 동안 아래로 캡처.
 
 ```bash
 # 컨테이너 안에서, CpuWorker 동작 중 순간 CPU 스냅샷
 top -b -n 1 | head -15
 # 또는 monitor.sh의 cpu_percent 컬럼 사용
 ```
+![시스템도구 CPU](image/B_cpu_worker_4.png)
 
-| 측정 시각 | %CPU (top) | 비고 |
-|---|---:|---|
-| (입력) | (입력) | |
-| (입력) | (입력) | |
 
-*(top 출력 스크린샷 또는 monitor.log 첨부)*
 
 ---
 
@@ -99,11 +73,13 @@ top -b -n 1 | head -15
 
 ### 3-1. 직접 원인 — CPU 과점유 (특정 프로세스 단독)
 
-시스템 전체 부하가 아니라 **`agent-leak-app` 단일 프로세스의 CPU 사용률이 단계적으로 상승**했다. `CpuWorker`가 연산 부하를 계속 가하여 사용률이 5% → 52.79%까지 올랐다. 시스템 전체가 아닌 특정 프로세스의 점유율이 오르는 것은 `top -H`나 `ps`로 해당 PID의 `%CPU`만 높은 것을 통해 확인할 수 있다.
+`agent-leak-app`의 `CpuWorker`가 **자체 보고하는 CPU 부하 지표**를 5% → 52.79%까지 단계적으로 끌어올렸고, 이 값이 임계치를 넘자 Watchdog가 작동했다.
+
+단, OS 레벨에서 실측한 실제 CPU 점유는 이와 달랐다. `top`의 `%CPU`와 누적 CPU 시간(`TIME+` 약 0.3초), 그리고 시스템 전체 `%Cpu(s)`가 약 99% idle을 유지한 점은 해당 프로세스가 실제로는 CPU를 거의 쓰지 않았음을 보여준다. 즉 이번 시나리오의 'CPU 과점유'는 앱이 자체적으로 연출한 부하이며, **애플리케이션이 보고하는 지표와 OS가 측정한 실제 사용률은 일치하지 않는다**는 점이 핵심 발견이다.
 
 ### 3-2. 종료 메커니즘 — 오류가 아닌 보호 정책(Watchdog)
 
-이 종료는 **버그로 인한 비정상 크래시가 아니라, 과점유 방지 정책(Watchdog)에 의한 의도된 보호 조치**다. CPU 임계치를 초과하자 Watchdog가 개입하여 프로세스를 정리했다(미션 요건상 SIGTERM으로 예상). OOM 사례의 `MemoryGuard`와 짝을 이루는, 애플리케이션 레벨의 자체 보호 장치다.
+이 종료는 **버그로 인한 비정상 크래시가 아니라, 과점유 방지 정책(Watchdog)에 의한 의도된 보호 조치**다. CPU 임계치를 초과하자 Watchdog가 개입하여 프로세스를 정리했다(미션 요건상 SIGTERM으로  확인). OOM 사례의 `MemoryGuard`와 짝을 이루는, 애플리케이션 레벨의 자체 보호 장치다.
 
 | 구분 | 이번 사례 (보호 정책) | 비정상 크래시 |
 |---|---|---|
@@ -129,20 +105,21 @@ top -b -n 1 | head -15
 ```bash
 # 예시: CPU 임계 상향 후 재실행
 docker run --name agent-cpu -e MEMORY_LIMIT=512 -e CPU_MAX_OCCUPY=90 -p 15034:15034 agent-leak-app:latest
+
+(컨테이너 내부에서)
+CPU_MAX_OCCUPY=90 MEMORY_LIMIT=512 ./agent-leak-app-x86
+CPU_MAX_OCCUPY=50 MEMORY_LIMIT=512 ./agent-leak-app-x86
 ```
 
 > 주의: CPU 항목이 OK 상태가 될 만큼 조정하면, 앱이 CPU 테스트를 건너뛰고 다음 경고 자원(THREAD → Deadlock)으로 넘어갈 수 있다. CPU 시나리오를 유지하려면 CPU가 테스트 대상으로 남는 값으로 실험할 것.
 
 ### 4-2. Before & After 비교
 
-> ⚠️ **직접 채워야 하는 부분.** `CPU_MAX_OCCUPY` 변경 전후로 **종료 여부 또는 위반까지 걸린 시간/부하**가 어떻게 달라지는지 기록.
+"CPU_MAX_OCCUPY를 권장선(50%) 이하로 낮추면 CPU가 OK로 판정되어 과부하 시나리오와 Watchdog 종료가 모두 사라진다. 반대로 50% 초과로 두면 설정값(80%)과 무관하게 항상 ~52%에서 SIGTERM이 발동한다. 따라서 Watchdog 발동선은 설정값이 아니라 50% 권장선에 고정돼 있으며, 이 선을 넘기느냐가 과부하 발생 여부를 가른다."
 
-| 구분 | CPU_MAX_OCCUPY | 위반 지점(CPU Load) | 위반까지 시간 | 종료 여부 |
-|---|---:|---:|---:|---|
-| Before | 80% | 52.79% | 약 26초 | 위반 → 종료 |
-| After | 90% (입력) | (입력) | (입력) | (입력) |
+![CPU90](image/B_cpu_worker_5_90.png) 
+![CPU50](image/B_cpu_worker_5_50.png)
 
-*(After 실행 로그 / top 캡처 첨부)*
 
 ### 4-3. 근본 해결 제안 (선택)
 
@@ -150,5 +127,4 @@ docker run --name agent-cpu -e MEMORY_LIMIT=512 -e CPU_MAX_OCCUPY=90 -p 15034:15
 - 추적 방법: `top -H`로 어떤 스레드가 CPU를 점유하는지 확인 → 프로파일러(예: `py-spy`, `perf`)로 핫스팟 함수 식별 → 연산 분산/슬립 추가/알고리즘 개선.
 
 ---
-
-*Reporter: KY Song · Codyssey26 / Task2 · 2026-06-16*
+ 

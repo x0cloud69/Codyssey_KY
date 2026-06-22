@@ -23,6 +23,9 @@
    docker start docker-leak-app
 5. Container 내부 진입 : 
    docker exec -it docker-leak-app
+6. Memory Size 변경 하여 컨테이너 만들어서 컨텐이너 내부에서 실행 할때
+   docker run -it --rm -p 15034:15034 -e MEMORY_LIMIT=160 --entrypoint /bin/bash agent-leak-app:latest 
+   ./agent-leak-app (컨테이너 내부에서 실행)
 ```
 
 
