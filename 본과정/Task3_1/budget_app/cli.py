@@ -26,7 +26,7 @@ def cmd_list(svc: BudgetService, args) -> None:
         print("거래가 없습니다.")
         return
     for tx in rows:
-        print(f"{tx.id} | {tx.date} | {tx.type} | {tx.category} | {tx.amount} | {tx.memo}")
+        print(f"{tx.id} | {tx.date} | {tx.type} | {tx.category} | {tx.amount} | {tx.memo} | {tx.tags}")
 
 
 def cmd_summary(svc: BudgetService, args) -> None:
@@ -53,7 +53,7 @@ def cmd_delete(svc:BudgetService, args) -> None:
 
 def cmd_update(svc:BudgetService, args) -> None:
     fields={}
-    for key in ("data","type","category","amount","memo"):
+    for key in ("date","type","category","amount","memo"):
         value = getattr(args,key)
         if value is not None:
             fields[key]=value
@@ -76,7 +76,7 @@ def cmd_search(svc:BudgetService, args) -> None:
         print("검색 결과가 없습니다.")
         return
     for tx in rows:
-      print(f"{tx.id} | {tx.date} | {tx.type} | {tx.category} | {tx.amount} | {tx.memo}")
+      print(f"{tx.id} | {tx.date} | {tx.type} | {tx.category} | {tx.amount} | {tx.memo} | {tx.tags}")
     print(f"\n총 {len(rows)}건")  
     
 def cmd_budget(svc: BudgetService, args) -> None:
@@ -88,7 +88,7 @@ def cmd_category(svc:BudgetService, args) -> None:
         for name in svc.cat_store.list_all():
             print(f"- {name}")
     elif args.action == "add":
-        name = input("카테고리명 : ").srtrip()
+        name = input("카테고리명 : ").strip()
         if svc.cat_store.add(name):
             print(f"[저장완료] category={name}")
         else:
@@ -142,6 +142,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_sum.add_argument("--month", required=True, help="YYYY-MM")
     p_sum.add_argument("--top", type=int, default=3)
 
+
     p_del = sub.add_parser("delete",help="거래삭제")
     p_del.add_argument("--id", required=True)
     
@@ -167,7 +168,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_budget.add_argument("--amount",type=int, required=True)
     
     p_cat=sub.add_parser("category",help="카테고리 관리")
-    p_cat.add_argument("action",choices=["add","list","removed"])
+    p_cat.add_argument("action",choices=["add","list","remove"])
     
     p_exp = sub.add_parser("export", help="CSV 내보내기")
     p_exp.add_argument("--out",required=True)
@@ -176,6 +177,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_exp.add_argument("--to")
     
     p_imp=sub.add_parser("import",help="CSV 가져오기")
+#    p_imp=sub.add_parser("import")
     p_imp.add_argument("--from",dest="from",required=True)
     return parser
 

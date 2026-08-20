@@ -2,7 +2,23 @@
 {"id": "TX-000002", "type": "income", "date": "2024-01-25", "amount": 3000000, "category": "salary", "memo": "월급", "tags": []}
 {"id": "TX-000003", "type": "expense", "date": "2024-02-03", "amount": 12000, "category": "food", "memo": "2월거", "tags": []}
 {"id": "TX-000004", "type": "income", "date": "2024-01-25", "amount": 3000000, "category": "salary", "memo": "월급", "tags": []}
-{"id": "TX-000006", "type": "income", "date": "2027-01-01", "amount": 100000, "category": "food", "memo": "food", "tags": ["식비"]}
+{"id": "TX-000006", "type": "income", "date": "2026-01-01", "amount": 9000000, "category": "salary", "memo": "급여,수입", "tags": ["식비"]}
 {"id": "TX-000007", "type": "income", "date": "2024-01-25", "amount": 3000000, "category": "salary", "memo": "월급", "tags": []}
 {"id": "TX-000008", "type": "income", "date": "2024-01-25", "amount": 3000000, "category": "salary", "memo": "월급", "tags": []}
 {"id": "TX-000009", "type": "expense", "date": "2024-01-15", "amount": 15000, "category": "food", "memo": "점심", "tags": ["meal", "work"]}
+{"id": "TX-000010", "type": "expense", "date": "2025-01-24", "amount": 450000, "category": "food", "memo": "저녁", "tags": ["식비", "지출"]}
+{"id": "TX-000011", "type": "income", "date": "2026-05-01", "amount": 809909, "category": "etc", "memo": "salary", "tags": ["용돈", "수입"]}
+{"id": "TX-000012", "type": "income", "date": "2026-01-01", "amount": 9000000, "category": "salary", "memo": "급여,수입", "tags": ["식비"]}
+{"id": "TX-000013", "type": "expense", "date": "2025-01-24", "amount": 450000, "category": "food", "memo": "저녁", "tags": ["식비", "지출"]}
+{"id": "TX-000014", "type": "expense", "date": "2024-02-03", "amount": 12000, "category": "food", "memo": "2월거", "tags": []}
+{"id": "TX-000015", "type": "income", "date": "2024-01-25", "amount": 3000000, "category": "salary", "memo": "월급", "tags": []}
+{"id": "TX-000016", "type": "income", "date": "2024-01-25", "amount": 3000000, "category": "salary", "memo": "월급", "tags": []}
+{"id": "TX-000017", "type": "income", "date": "2024-01-25", "amount": 3000000, "category": "salary", "memo": "월급", "tags": []}
+{"id": "TX-000018", "type": "income", "date": "2024-01-25", "amount": 3000000, "category": "salary", "memo": "월급", "tags": []}
+{"id": "TX-000019", "type": "income", "date": "2027-01-01", "amount": 9000000, "category": "salary", "memo": "급여,수입", "tags": ["식비"]}
+{"id": "TX-000020", "type": "expense", "date": "2027-01-24", "amount": 450000, "category": "food", "memo": "저녁", "tags": ["식비", "지출"]}
+{"id": "TX-000021", "type": "expense", "date": "2027-02-03", "amount": 12000, "category": "food", "memo": "2월거", "tags": []}
+{"id": "TX-000022", "type": "income", "date": "2027-01-25", "amount": 3000000, "category": "salary", "memo": "월급", "tags": []}
+{"id": "TX-000023", "type": "income", "date": "2027-01-25", "amount": 3000000, "category": "salary", "memo": "월급", "tags": []}
+{"id": "TX-000024", "type": "income", "date": "2027-01-25", "amount": 3000000, "category": "salary", "memo": "월급", "tags": []}
+{"id": "TX-000025", "type": "income", "date": "2027-01-25", "amount": 3000000, "category": "salary", "memo": "월급", "tags": []}

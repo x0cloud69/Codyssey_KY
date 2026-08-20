@@ -122,7 +122,7 @@ class CategoryStore:
         remaining = [n for n in self.list_all() if n!= name]
         with open(self.path, "w", encoding="utf-8") as f:
             for n in remaining:
-                f.write(json.dump({"name":n}, ensure_ascill=False) + "\n")
+                f.write(json.dumps({"name": n}, ensure_ascii=False) + "\n")
                 
 ###################################################################
 # 예산 관리 : SUMMARY 에 "예산 대비 얼마 사용했는지 + 초과 경과"
