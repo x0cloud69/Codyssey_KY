@@ -58,15 +58,15 @@ def cmd_update(svc:BudgetService, args) -> None:
         if value is not None:
             fields[key]=value
             
-        if not fields:
-            print("[안내] 수정할 항목을 하나 이상 지정하세요 (예: --amount 20000)")
-            sys.exit(1)
-            
-        if svc.update_transaction(args.id,**fields):
-            print(f"[수정 완료] id={args.id} -> {fields}")
-        else:
-            print(f"[실패] 없는 id 입니다: {args.id}")
-            sys.exit(1)
+    if not fields:
+        print("[안내] 수정할 항목을 하나 이상 지정하세요 (예: --amount 20000)")
+        sys.exit(1)
+        
+    if svc.update_transaction(args.id,**fields):
+        print(f"[수정 완료] id={args.id} -> {fields}")
+    else:
+        print(f"[실패] 없는 id 입니다: {args.id}")
+        sys.exit(1)
             
 def cmd_search(svc:BudgetService, args) -> None:
     rows = svc.search(date_from=getattr(args,"from"), date_to=args.to,

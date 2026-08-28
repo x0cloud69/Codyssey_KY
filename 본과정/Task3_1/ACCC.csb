@@ -1,0 +1,11 @@
+date,type,category,amount,memo,tags
+2027-01-25,income,salary,3000000,월급,
+2027-01-25,income,salary,3000000,월급,
+2027-01-25,income,salary,3000000,월급,
+2027-01-24,expense,food,450000,저녁,"식비,지출"
+2027-01-01,income,salary,9000000,"급여,수입",식비
+2026-07-01,income,salary,200000,용돈,"식비,용돈"
+2026-05-01,income,etc,809909,salary,"용돈,수입"
+2026-01-09,income,salary,100000,급여,"급여,수입"
+2026-01-01,income,salary,9000000,"급여,수입",식비
+2026-01-01,income,salary,120000,수정됨21,식비

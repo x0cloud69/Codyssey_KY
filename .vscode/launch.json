@@ -8,6 +8,14 @@
       "program": "${file}",
       "console": "integratedTerminal",
       "cwd": "${fileDirname}"
+    },
+    {
+      "name": "Task4 Mini Redis",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "mini_redis",
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}/본과정/Task4"
     }
   ]
 }
