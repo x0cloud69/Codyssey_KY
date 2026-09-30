@@ -1,0 +1,5 @@
+# 비밀 키 / 상태 파일은 커밋 금지
+*.pem
+infra/state.env*
+*credentials*.csv
+*accessKeys*.csv

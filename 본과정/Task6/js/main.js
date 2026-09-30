@@ -131,7 +131,7 @@ hamburger.addEventListener('click', toggleMenu);
 
 /* =================================================================
    4. 부드러운 스크롤
-   흐름 : [메뉴 링크 클릭] → 기본 이동(뚝 끊기는 점프) 막기 → 부드럽게 스크롤
+   흐름 : [메뉴 링크 클릭] → 기본 이동(뚝 끊기는 점프) 막기 → 부드럽게 스크롤                       
    ================================================================= */
 const anchorLinks = document.querySelectorAll('a[href^="#"]'); // href가 #으로 시작하는 모든 링크
 
@@ -143,7 +143,7 @@ anchorLinks.forEach((link) => {
 
     event.preventDefault();                             // 브라우저 기본 동작(즉시 점프) 막기
     targetSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    closeMenu();                                        // 모바일 메뉴가 열려 있으면 닫기
+    closeMenu();                    // 모바일 메뉴가 열려 있으면 닫기
   });
 });
 
@@ -290,7 +290,7 @@ const createStatusBox = (status, errorMessage) => {
         <p>프로젝트를 불러올 수 없습니다.</p>
         <small>${escapeHTML(errorMessage)}</small>
         <button type="button" class="btn btn-primary retry-btn">다시 시도</button>
-      </div>`;
+      </div>`;                                
   }
 
   // 'empty'
