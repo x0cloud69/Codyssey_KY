@@ -27,6 +27,9 @@ export AWS_PROFILE=${AWS_PROFILE:-task7}
 export AWS_REGION=ap-northeast-2
 export AWS_DEFAULT_REGION=ap-northeast-2
 export AWS_PAGER=""
+# Git Bash(MSYS)가 "/aws/service/..." , "DeviceName=/dev/sda1" 같은 인자를 Windows 경로로 바꾸지 않도록 변환 끄기
+export MSYS_NO_PATHCONV=1
+export MSYS2_ARG_CONV_EXCL="*"
 
 cd "$ROOT_DIR"   # file:// 경로를 상대경로로 쓰기 위함 (Git Bash 경로 변환 문제 회피)
 
@@ -41,7 +44,17 @@ KEY_FILE="$ROOT_DIR/${KEY_NAME}.pem"
 AMI_PARAM=/aws/service/canonical/ubuntu/server/24.04/stable/current/amd64/hvm/ebs-gp3/ami-id
 
 # Windows(Git Bash)의 aws.exe 는 CRLF 로 출력 → ID 끝의 \r 제거
-aws() { command aws "$@" | tr -d '\r'; }
+# aws.exe 출력을 파이프(|)로 바로 받으면, aws.exe 가 띄운 백그라운드 프로세스가 파이프를 붙잡아
+# 명령이 끝났는데도 스크립트가 멈출 수 있다 → 임시 파일로 받은 뒤 CR 제거. 입력 대기도 차단(</dev/null).
+aws() {
+  local out rc
+  out=$(mktemp)
+  command aws --cli-connect-timeout 15 --cli-read-timeout 60 "$@" </dev/null >"$out"
+  rc=$?
+  tr -d '\r' <"$out"
+  rm -f "$out"
+  return $rc
+}
 
 log()  { printf '\033[36m[provision]\033[0m %s\n' "$*"; }
 save() { echo "$1=$2" >> "$STATE_FILE"; }
@@ -122,7 +135,8 @@ save KEY_NAME "$KEY_NAME"
 log "Key Pair       $KEY_NAME → $KEY_FILE (재발급 불가, 안전 보관 / Git 커밋 금지)"
 
 # --- 7. EC2 --------------------------------------------------------------------
-AMI_ID=$(aws ssm get-parameter --name "$AMI_PARAM" --query 'Parameter.Value' --output text)
+# Git Bash(MSYS)는 "/aws/..." 로 시작하는 인자를 "C:/Program Files/Git/aws/..." 로 바꿔 버린다 → 변환 끄기
+AMI_ID=$(MSYS_NO_PATHCONV=1 aws ssm get-parameter --name "$AMI_PARAM" --query 'Parameter.Value' --output text)
 log "AMI            $AMI_ID (Ubuntu 24.04 LTS)"
 
 INSTANCE_ID=$(aws ec2 run-instances \

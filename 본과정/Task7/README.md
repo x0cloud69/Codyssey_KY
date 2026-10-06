@@ -21,6 +21,16 @@ Content-Type: text/plain
 OK
 ```
 
+**증빙 스크린샷**
+
+| (B) 선택 방식 — 내 PC `curl.exe -i /health` | 브라우저 `http://3.36.131.116/health` |
+|---|---|
+| ![외부 접속 - curl](docs/screenshots/external-health.png) | ![외부 접속 - health](docs/screenshots/7.Health.png) |
+
+**참고 — 브라우저 `http://3.36.131.116/` (Hello Cloud 페이지)**
+
+![외부 접속 - Hello Cloud](docs/screenshots/7.Hello%20Cloud.png)
+
 ---
 
 ## 제출물
@@ -33,6 +43,57 @@ OK
 | 리소스 정리 체크리스트 | [`docs/cleanup-checklist.md`](docs/cleanup-checklist.md) |
 
 ![architecture](docs/architecture.png)
+
+### 🔎 다이어그램 읽는 법 — 요청이 처리되는 순서
+
+다이어그램에는 **세 가지 흐름**이 있다. 선 색으로 구분한다.
+
+| 선 | 흐름 | 누가 → 어디로 | 포트 |
+|---|---|---|---|
+| **파랑 실선** | A. 웹 서비스 접속 | 인터넷 사용자 → EC2 | HTTP `80` |
+| **주황 점선** | B. 서버 관리 접속 | 학습자 PC → EC2 | SSH `22` |
+| **초록 점선** | C. 서버의 외부 통신 | EC2 → 인터넷 | 전체 (아웃바운드) |
+
+#### A. 🌐 인터넷 사용자 — 웹 페이지 보기 (`http://3.36.131.116/health`)
+
+| 순서 | 위치 | 무슨 일이 일어나나 | 비유 |
+|---|---|---|---|
+| ① | **인터넷 사용자** (브라우저 / curl) | 주소창에 `http://3.36.131.116/health` 입력 → **80번 포트**로 요청 출발. 누구나(모든 IP) 가능 | 손님이 도로명 주소를 보고 출발 |
+| ② | **Internet Gateway** `task7-igw` | VPC 정문 통과. 외부 주소(퍼블릭 IP `3.36.131.116`)를 내부 주소(프라이빗 IP `10.0.1.173`)로 **변환** | 정문 경비가 "몇 동 몇 호" 로 안내 |
+| ③ | **Route Table** `task7-public-rt` | `10.0.0.0/16 → local` 규칙으로 VPC 안쪽 목적지로 전달 (`0.0.0.0/0 → IGW` 가 있어 이 서브넷이 **퍼블릭**) | 단지 안 길 안내 표지판 |
+| ④ | **Public Subnet** `task7-public-subnet` | `10.0.1.0/24` 구역(ap-northeast-2a) 안으로 진입 | 해당 **동** 도착 |
+| ⑤ | **Security Group** `task7-web-sg` | 인바운드 규칙 확인 → **`80 ← 0.0.0.0/0` 허용** 이므로 통과 (허용 안 된 포트는 여기서 차단) | 현관 **도어락** 통과 |
+| ⑥ | **EC2** `task7-web` · **Nginx :80** | Nginx가 요청 처리 → `/health` 면 `OK`, `/` 면 Hello Cloud 페이지 생성 | 집주인이 문 열고 응답 |
+| ⑦ | **응답 복귀** | `200 OK` + `OK` 가 **왔던 길을 거꾸로** (SG → Subnet → IGW → 인터넷) 돌아감. SG는 **상태 저장(stateful)** 이라 응답용 규칙이 따로 필요 없음 | 같은 길로 답장 배달 |
+
+> 요약: **사용자 → IGW → Route Table → Subnet → SG(80 허용) → EC2 Nginx → (응답) 역순 복귀**
+> 하나라도 빠지면(퍼블릭 IP 없음 · IGW 미연결 · 경로 없음 · SG 80 미허용 · Nginx 중지) **타임아웃 또는 연결 거부**가 난다.
+
+#### B. 💻 학습자 PC — 서버 관리 접속 (`ssh -i task7-key.pem ubuntu@3.36.131.116`)
+
+| 순서 | 위치 | 무슨 일이 일어나나 |
+|---|---|---|
+| ① | **학습자 PC** (내 공인 IP `x.x.x.x`) | `ssh` / `scp` 명령 실행 → **22번 포트**로 요청. 개인키 `task7-key.pem` 준비 |
+| ② | **Internet Gateway** | A와 같은 정문 통과 · 주소 변환 |
+| ③ | **Route Table → Public Subnet** | A와 같은 경로로 서브넷 진입 |
+| ④ | **Security Group** | 인바운드 규칙 **`22 ← 내 IP/32`** 확인 → **내 PC에서 온 요청만 통과**, 다른 IP는 전부 차단 |
+| ⑤ | **EC2** (SSH 서버) | 키 확인 — EC2에 등록된 **공개키(자물쇠)** 와 내 **개인키(열쇠)** 가 짝이 맞으면 로그인 성공 → `ubuntu@ip-10-0-1-173:~$` |
+| ⑥ | **작업** | 원격 터미널에서 `bash verify-instance.sh` 등 실행 → 결과가 같은 길로 내 화면에 표시 |
+
+> 요약: **내 PC → IGW → Subnet → SG(22, 내 IP만) → EC2 키 인증 → 원격 터미널**
+> 웹(80)은 **누구나**, 관리(22)는 **나만** — 이것이 SG 최소권한 설계의 핵심.
+
+#### C. 🔁 EC2 → 인터넷 — 서버가 밖으로 나가는 통신 (아웃바운드)
+
+| 순서 | 위치 | 무슨 일이 일어나나 |
+|---|---|---|
+| ① | **EC2** | 서버가 스스로 외부 요청 시작 — 최초 부팅 시 `apt install nginx`, 점검 시 `curl https://example.com` |
+| ② | **Security Group** | 아웃바운드 규칙 **`all → 0.0.0.0/0`** (기본값) 이므로 통과 |
+| ③ | **Route Table** | 목적지가 VPC 밖(`0.0.0.0/0`) → **IGW로 보냄** |
+| ④ | **Internet Gateway → 인터넷** | 프라이빗 IP를 퍼블릭 IP로 변환해 인터넷으로 나감 → 응답 수신 (`HTTP/2 200`) |
+
+> 요약: **EC2 → SG(아웃바운드 허용) → Route Table(0.0.0.0/0 → IGW) → IGW → 인터넷**
+> 이 경로가 있어야 패키지 설치·업데이트가 가능하다 (`verify-instance.sh` 첫 번째 PASS 항목).
 
 ## 폴더 구조
 
@@ -76,6 +137,49 @@ Task7/
 
 ---
 
+## 📖 약어 정리 (Full Name)
+
+| 약어 | Full Name | 한 줄 뜻 |
+|---|---|---|
+| **AWS** | Amazon Web Services | 아마존의 클라우드 서비스 |
+| **IAM** | Identity and Access Management | 사용자·권한(출입증) 관리 |
+| **MFA** | Multi-Factor Authentication | 비밀번호 + 인증 앱 코드로 이중 확인 |
+| **VPC** | Virtual Private Cloud | 나만의 격리된 가상 네트워크 |
+| **CIDR** | Classless Inter-Domain Routing | `10.0.0.0/16` 처럼 IP 범위를 표기하는 방식 |
+| **AZ** | Availability Zone | 리전 안의 물리적으로 분리된 데이터센터 |
+| **IGW** | Internet Gateway | VPC ↔ 인터넷 출입구 |
+| **RT** | Route Table | 트래픽 경로 규칙표 |
+| **SG** | Security Group | 인스턴스 단위 가상 방화벽 |
+| **NACL** | Network Access Control List | 서브넷 단위 방화벽 (이번 실습은 기본값 사용) |
+| **NAT** | Network Address Translation | 사설 IP ↔ 공인 IP 주소 변환 (NAT Gateway는 이번 실습에서 미사용) |
+| **EC2** | Elastic Compute Cloud | 가상 서버(컴퓨터) |
+| **AMI** | Amazon Machine Image | EC2에 설치할 OS 이미지 |
+| **EBS** | Elastic Block Store | EC2용 가상 디스크 |
+| **gp3** | General Purpose SSD (3세대) | 범용 SSD 볼륨 유형 |
+| **SSD** | Solid State Drive | 반도체 저장장치 |
+| **EIP** | Elastic IP | 고정 퍼블릭 IP (이번 실습에서 미사용) |
+| **IMDS** | Instance Metadata Service | 인스턴스가 자기 정보를 조회하는 내부 서비스 (v2 = 토큰 필수) |
+| **vCPU** | virtual Central Processing Unit | 가상 CPU(중앙처리장치) |
+| **GiB** | Gibibyte | 2³⁰ 바이트 (≈ 1.07 GB) |
+| **OS** | Operating System | 운영체제 (Ubuntu 등) |
+| **LTS** | Long Term Support | 장기 지원 버전 (Ubuntu 24.04 LTS) |
+| **IP** | Internet Protocol | 인터넷 주소 체계 (IPv4 = 버전 4) |
+| **DNS** | Domain Name System | 이름 → IP 주소 변환(인터넷 전화번호부) |
+| **TCP** | Transmission Control Protocol | 신뢰성 있는 데이터 전송 규약 (HTTP·SSH가 사용) |
+| **HTTP / HTTPS** | HyperText Transfer Protocol (Secure) | 웹 통신 규약 / 암호화된 웹 통신 |
+| **URL** | Uniform Resource Locator | 웹 주소 (`http://…/health`) |
+| **SSH** | Secure Shell | 암호화된 원격 터미널 접속 |
+| **scp** | Secure Copy Protocol | SSH 기반 파일 복사 |
+| **curl** | Client URL | 명령줄 HTTP 요청 도구 |
+| **CLI** | Command Line Interface | 명령어로 조작하는 방식 (AWS CLI) |
+| **JSON** | JavaScript Object Notation | IAM 정책 등을 적는 데이터 형식 |
+| **ARN** | Amazon Resource Name | AWS 리소스의 고유 식별 이름 |
+| **ALB / ELB** | Application / Elastic Load Balancer | 트래픽 분산 장치 (이번 실습에서 미사용) |
+| **RDS** | Relational Database Service | 관리형 데이터베이스 (이번 실습에서 미사용) |
+| **KST / UTC** | Korea Standard Time / Coordinated Universal Time | 한국 표준시(UTC+9) / 세계 표준시 |
+
+---
+
 ## 진행 절차
 
 ### 0단계. AWS 환경 구축 (계정이 없다면 여기부터)
@@ -92,6 +196,13 @@ Task7/
 | F | 내 PC 도구 확인 (SSH, CLI는 선택) | — |
 
 ### 1단계. IAM 최소권한 확인
+
+> 💡 **개념 — IAM이란?**
+> **IAM(Identity and Access Management)** 은 AWS 계정 안에서 **"누가 · 무엇을 · 어디까지"** 할 수 있는지 정하는 **출입증 시스템**이다.
+> - **루트 계정** = 건물주 마스터키. 모든 걸 할 수 있어 위험하므로 평소엔 금고에 보관(MFA(Multi-Factor Authentication, 다중 인증) 걸고 사용 최소화).
+> - **IAM 사용자** (`task7-user`) = 직원 출입증. 필요한 방(EC2 · VPC · SG)만 열 수 있게 발급.
+> - **정책(Policy)** = 출입증에 적힌 허용 목록(JSON, JavaScript Object Notation 형식). 목록에 없으면 기본 **거부**.
+> - **최소권한 원칙** = "필요한 만큼만" 준다. 출입증을 잃어버려도 피해가 작다.
 
 > 루트 계정은 0단계 초기 설정(계정 보안·IAM 사용자 생성)에만 사용하고, 실습은 `task7-user` 로만 진행한다.
 
@@ -113,272 +224,757 @@ Task7/
 | (공통 조건) | `aws:RequestedRegion = ap-northeast-2` | 서울 외 리전 사용 차단 |
 | (없음) | S3 / RDS / IAM 등 | 실습과 무관 → 부여하지 않음 |
 
+<details>
+<summary>📘 규칙 풀이 — 쉽게 이해하기 (클릭)</summary>
+<p>정책 = <strong><code>task7-user</code> 출입증에 &quot;어느 방을 열 수 있는지&quot; 적어 둔 규칙표</strong></p>
+<p><strong>먼저 알아둘 기본 규칙</strong></p>
+<table>
+<thead>
+<tr>
+<th>규칙</th>
+<th>뜻</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>목록에 없으면 거부</strong></td>
+<td><code>Allow</code> 로 적힌 것만 가능. 안 적힌 건 자동 차단 (암묵적 거부)</td>
+</tr>
+<tr>
+<td><strong>Deny가 이긴다</strong></td>
+<td>어딘가에 허용이 있어도 <strong><code>Deny</code> 가 하나라도 걸리면 무조건 차단</strong></td>
+</tr>
+</tbody>
+</table>
+<p><strong>8개 규칙 풀이</strong></p>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>Statement</th>
+<th>종류</th>
+<th>쉬운 설명</th>
+<th>비유</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>①</td>
+<td><code>ReadOnlyEc2VpcInSeoul</code></td>
+<td>허용</td>
+<td><code>ec2:Describe*</code> = EC2·VPC·서브넷 등을 <strong>조회만</strong>. 없으면 콘솔 화면이 텅 빔</td>
+<td>건물 <strong>안내도 열람</strong></td>
+</tr>
+<tr>
+<td>②</td>
+<td><code>NetworkVpcSubnetIgwRoute</code></td>
+<td>허용</td>
+<td>VPC·서브넷·IGW·라우팅 테이블 <strong>생성·연결·삭제</strong> (2단계 1~4번, 5단계 정리)</td>
+<td>단지·동·정문·표지판 <strong>공사 허가증</strong></td>
+</tr>
+<tr>
+<td>③</td>
+<td><code>SecurityGroup</code></td>
+<td>허용</td>
+<td>보안 그룹 생성, 인바운드/아웃바운드 규칙 추가·삭제</td>
+<td><strong>도어락 설치·비밀번호 변경</strong></td>
+</tr>
+<tr>
+<td>④</td>
+<td><code>ComputeInstanceKeyVolumeEip</code></td>
+<td>허용</td>
+<td>EC2 시작·중지·종료, 키 페어 생성·삭제, 볼륨 삭제, 탄력적 IP 할당·반납, 태그</td>
+<td><strong>집 짓기·열쇠 발급·철거</strong></td>
+</tr>
+<tr>
+<td>⑤</td>
+<td><code>ResolvePublicAmiIdsFromSsm</code></td>
+<td>허용</td>
+<td>AWS 공개 &quot;최신 Ubuntu 이미지 ID&quot; 만 조회 (<code>/aws/service/*</code> 경로 한정)</td>
+<td><strong>공식 설치 CD 목록 열람</strong></td>
+</tr>
+<tr>
+<td>⑥</td>
+<td><code>DecodeIamDenyMessages…</code></td>
+<td>허용</td>
+<td>권한 오류 시 받는 암호 같은 문자열을 <strong>&quot;어떤 규칙에 막혔는지&quot;</strong> 해독 → 트러블슈팅 근거</td>
+<td><strong>출입 거부 사유서 열람</strong></td>
+</tr>
+<tr>
+<td>⑦</td>
+<td><code>DenyNonFreeTierInstanceTypes</code></td>
+<td><strong>거부</strong></td>
+<td><code>t2.micro</code>·<code>t3.micro</code> <strong>외</strong> 유형으로 EC2 생성 차단 → 비싼 서버 실수 원천 봉쇄</td>
+<td><strong>&quot;원룸만, 펜트하우스 금지&quot;</strong></td>
+</tr>
+<tr>
+<td>⑧</td>
+<td><code>DenyLargeVolumes</code></td>
+<td><strong>거부</strong></td>
+<td><strong>10GiB 초과</strong> 디스크 생성 차단 → 용량 과금 사고 방지</td>
+<td><strong>&quot;창고는 10평까지만&quot;</strong></td>
+</tr>
+</tbody>
+</table>
+<p><strong>공통 조건 — 서울만</strong>
+①~④ 에 <code>aws:RequestedRegion = ap-northeast-2</code> 조건 → <strong>서울 리전에서만</strong> 동작. 도쿄·미국 등 다른 리전에 몰래 리소스가 생겨 과금되는 것을 차단 (= <strong>&quot;서울 지점 전용 출입증&quot;</strong>)</p>
+<p><strong>일부러 뺀 것</strong></p>
+<table>
+<thead>
+<tr>
+<th>빠진 권한</th>
+<th>이유</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>S3 · RDS · Lambda 등 다른 서비스</td>
+<td>과제와 무관</td>
+</tr>
+<tr>
+<td><strong>IAM 권한</strong></td>
+<td>자기 권한을 스스로 늘리는 것(권한 상승)을 막기 위해 — <strong>가장 중요</strong></td>
+</tr>
+<tr>
+<td>Compute Optimizer · Route 53 DNS 방화벽 등</td>
+<td>불필요 → 콘솔에 빨간 권한 오류가 뜬 이유이자, <strong>정책이 제대로 동작한다는 증거</strong> (<a href="docs/troubleshooting.md">트러블슈팅 사례 2</a>)</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p><strong>한 줄 요약</strong> — <strong>&quot;필요한 것(EC2·VPC·SG)만, 서울에서만, 싼 것만&quot;</strong> 할 수 있는 출입증. 유출되더라도 피해가 작고, 요금 폭탄이 날 수 없다.</p>
+</blockquote>
+</details>
+
 ### 2단계. 인프라 생성 — 둘 중 하나 선택
 
 #### 방법 A. 콘솔 (권장: 과정을 눈으로 이해)
 
-1. **VPC** 생성: `task7-vpc`, `10.0.0.0/16` → Actions → Edit VPC settings → DNS hostnames 활성화
-
-   <details>
-   <summary>상세 절차 (클릭)</summary>
-
-   **(0) 리전 확인** — 콘솔 우측 상단 리전이 **아시아 태평양(서울) `ap-northeast-2`** 인지 확인
-
-   **(1) VPC 생성**
-   1. 상단 검색창 `VPC` → **VPC** 서비스 → 왼쪽 **Your VPCs(VPC)** → **Create VPC(VPC 생성)**
-   2. 설정 입력
-
-      | 항목 | 값 |
-      |---|---|
-      | Resources to create (생성할 리소스) | **VPC only (VPC만)** |
-      | Name tag (이름 태그) | `task7-vpc` |
-      | IPv4 CIDR block | IPv4 CIDR manual input (수동 입력) |
-      | IPv4 CIDR | `10.0.0.0/16` |
-      | IPv6 CIDR block | No IPv6 CIDR block |
-      | Tenancy (테넌시) | Default (기본값) |
-
-   3. **Create VPC** 클릭
-
-   > ⚠️ *VPC and more(VPC 등)* 를 선택하면 서브넷·라우팅 테이블·NAT 등이 자동 생성된다. 이후 단계에서 직접 만들므로 **VPC only** 선택.
-
-   **(2) DNS hostnames 활성화**
-   1. `task7-vpc` 선택 → 우측 상단 **Actions(작업)** → **Edit VPC settings(VPC 설정 편집)**
-   2. DNS settings
-      - ☑ Enable DNS resolution (DNS 확인 활성화) — 기본값으로 체크됨
-      - ☑ **Enable DNS hostnames (DNS 호스트 이름 활성화)** — **체크**
-   3. **Save(저장)**
-
-   **(3) 확인** — VPC **Details** 탭에서 `DNS hostnames: Enabled` 확인
-
-   ![VPC - 세부 정보 (DNS 호스트 이름 활성화됨)](docs/screenshots/1.VPC.png)
-
-   > DNS hostnames 를 켜야 퍼블릭 IP를 받은 EC2에 `ec2-x-x-x-x.ap-northeast-2.compute.amazonaws.com` 형태의 퍼블릭 DNS 이름이 부여된다.
-
-   </details>
-
-2. **Subnet** 생성: `task7-public-subnet`, `10.0.1.0/24`, `ap-northeast-2a` → Edit subnet settings → *Enable auto-assign public IPv4* 체크
-
-   <details>
-   <summary>상세 절차 (클릭)</summary>
-
-   **(1) 서브넷 생성**
-   1. VPC 콘솔 왼쪽 **Subnets(서브넷)** → **Create subnet(서브넷 생성)**
-   2. **VPC ID** 에서 **`task7-vpc`** 선택 (선택해야 아래 입력란이 나타남)
-   3. Subnet settings(서브넷 설정)
-
-      | 항목 | 값 |
-      |---|---|
-      | Subnet name (서브넷 이름) | `task7-public-subnet` |
-      | Availability Zone (가용 영역) | 아시아 태평양(서울) / `ap-northeast-2a` |
-      | IPv4 VPC CIDR block | `10.0.0.0/16` (자동 선택) |
-      | IPv4 subnet CIDR block | `10.0.1.0/24` |
-
-   4. **Create subnet** 클릭
-
-   > ⚠️ VPC ID를 기본 VPC(`172.31.0.0/16`)로 잘못 선택하는 실수가 가장 흔하다. 반드시 `task7-vpc` 확인.
-
-   **(2) 퍼블릭 IPv4 자동 할당 활성화**
-   1. `task7-public-subnet` 선택 → **Actions(작업)** → **Edit subnet settings(서브넷 설정 편집)**
-   2. Auto-assign IP settings → ☑ **Enable auto-assign public IPv4 address (퍼블릭 IPv4 주소 자동 할당 활성화)**
-   3. **Save(저장)**
-
-   **(3) 확인** — 서브넷 **세부 정보** 탭
-
-   | 항목 | 기대값 |
-   |---|---|
-   | VPC | `task7-vpc` |
-   | IPv4 CIDR | `10.0.1.0/24` (사용 가능 IP 251개 — /24 256개 중 AWS 예약 5개 제외) |
-   | 가용 영역 | `apne2-az1 (ap-northeast-2a)` |
-   | 퍼블릭 IPv4 주소 자동 할당 | **예** |
-   | 기본 서브넷 | 아니요 |
-
-   ![Subnet - 세부 정보 (퍼블릭 IPv4 자동 할당: 예)](docs/screenshots/2.Subnet.png)
-
-   > - 목록의 **퍼블릭 액세스 차단: 끄기** 는 자동 할당과 **별개 설정**이며 "끄기"가 정상이다.
-   > - 목록의 `172.31.x.x/20` 서브넷 4개는 AWS 기본 VPC 소속이므로 건드리지 않는다.
-   > - 서브넷의 가용 영역은 생성 후 변경할 수 없다(잘못 만들면 삭제 후 재생성).
-
-   </details>
-
-3. **Internet Gateway** 생성: `task7-igw` → Attach to VPC → `task7-vpc`
-
-   <details>
-   <summary>상세 절차 (클릭)</summary>
-
-   **(1) 인터넷 게이트웨이 생성**
-   1. VPC 콘솔 왼쪽 **Internet gateways(인터넷 게이트웨이)** → **Create internet gateway(인터넷 게이트웨이 생성)**
-   2. Name tag(이름 태그): `task7-igw`
-   3. **Create internet gateway** 클릭 → 이 시점 상태는 **Detached**
-
-   **(2) VPC에 연결 (Attach)**
-   1. 생성 직후 상단 초록 배너의 **Attach to a VPC(VPC에 연결)** 클릭
-      (배너를 놓쳤으면 `task7-igw` 선택 → **Actions(작업)** → **Attach to VPC(VPC에 연결)**)
-   2. Available VPCs(사용 가능한 VPC): **`task7-vpc`** 선택
-   3. **Attach internet gateway(인터넷 게이트웨이 연결)** 클릭
-
-   **(3) 확인**
-
-   | 항목 | 기대값 |
-   |---|---|
-   | State (상태) | **Attached** |
-   | VPC ID | `vpc-… \| task7-vpc` |
-
-   ![Internet Gateway - Attached](docs/screenshots/3.Internet%20gateway.png)
-
-   > - IGW는 VPC당 **1개만** 연결할 수 있다. 목록에 이미 있는 다른 IGW는 기본 VPC 소속이므로 건드리지 않는다.
-   > - IGW를 연결만 해서는 인터넷이 되지 않는다. 다음 단계 Route Table에 `0.0.0.0/0 → task7-igw` 경로를 추가해야 서브넷이 "퍼블릭"이 된다.
-   > - 정리 시에는 **Detach → Delete** 순서 (연결된 상태로는 삭제 불가).
-
-   </details>
-
-4. **Route Table** 생성: `task7-public-rt` → Routes 편집 `0.0.0.0/0 → task7-igw` → Subnet associations 에 Public Subnet 연결
-
-   <details>
-   <summary>상세 절차 (클릭)</summary>
-
-   **(1) 라우팅 테이블 생성**
-   1. VPC 콘솔 왼쪽 **Route tables(라우팅 테이블)** → **Create route table(라우팅 테이블 생성)**
-   2. Name(이름): `task7-public-rt` / VPC: **`task7-vpc`**
-   3. **Create route table** 클릭 → 이 시점에는 `10.0.0.0/16 → local` 경로 1개만 존재
-
-   **(2) 인터넷 경로 추가**
-   1. **Routes(라우팅)** 탭 → **Edit routes(라우팅 편집)** → **Add route(라우팅 추가)**
-   2. Destination(대상): `0.0.0.0/0` / Target(대상): **Internet Gateway** → `task7-igw` 선택
-   3. **Save changes(변경 사항 저장)**
-
-   **(3) 서브넷 연결**
-   1. **Subnet associations(서브넷 연결)** 탭 → **명시적 서브넷 연결** 의 **Edit subnet associations(서브넷 연결 편집)**
-   2. ☑ `task7-public-subnet` 체크 → **Save associations(연결 저장)**
-
-   **(4) 확인**
-
-   | 위치 | 항목 | 기대값 |
-   |---|---|---|
-   | 라우팅 탭 | `0.0.0.0/0` | → `igw-…` (task7-igw) · 활성 |
-   | 라우팅 탭 | `10.0.0.0/16` | → `local` · 활성 (자동 생성) |
-   | 서브넷 연결 탭 | 명시적 서브넷 연결 | `task7-public-subnet` (`10.0.1.0/24`) |
-   | 세부 정보 | VPC / 기본 | `task7-vpc` / 아니요 |
-
-   ![Route Table - 라우팅](docs/screenshots/4.Route%20Table-1.png)
-
-   ![Route Table - 서브넷 연결](docs/screenshots/4.Route%20Table-2.png)
-
-   > - `0.0.0.0/0 → IGW` 경로가 있는 라우팅 테이블에 연결된 서브넷이 곧 **퍼블릭 서브넷**이다.
-   > - 서브넷을 명시적으로 연결하지 않으면 VPC의 **기본(main) 라우팅 테이블**(local 경로만 있음)을 따르므로 외부 접속이 안 된다.
-   > - 정리 시에는 **서브넷 연결 해제 → 라우팅 테이블 삭제** 순서.
-
-   </details>
-
-5. **Security Group** 생성 (`task7-vpc`): 인바운드 `HTTP 80 / 0.0.0.0/0`, `SSH 22 / My IP`
-
-   <details>
-   <summary>상세 절차 (클릭)</summary>
-
-   **(1) 기본 세부 정보**
-   1. VPC 콘솔 왼쪽 **보안 → Security groups(보안 그룹)** → **Create security group(보안 그룹 생성)**
-   2. 입력
-
-      | 항목 | 값 |
-      |---|---|
-      | 보안 그룹 이름 | `task7-web-sg` |
-      | 설명 | `Task7 web server SG` (영문만 가능) |
-      | VPC | **`task7-vpc`** (기본 VPC가 선택되어 있으므로 반드시 변경) |
-
-   **(2) 인바운드 규칙** — **규칙 추가** 2회
-
-   | 유형 | 프로토콜 | 포트 | 소스 | 설명 |
-   |---|---|---|---|---|
-   | HTTP | TCP | 80 | Anywhere-IPv4 `0.0.0.0/0` | web |
-   | SSH | TCP | 22 | **내 IP** `x.x.x.x/32` (자동 입력) | my ip ssh |
-
-   **(3) 아웃바운드 규칙** — 기본값(모든 트래픽 → `0.0.0.0/0`) 유지. 인스턴스의 `curl https://example.com` 아웃바운드 검증에 필요
-
-   **(4) Create security group** 클릭
-
-   **(5) 확인**
-
-   | 항목 | 기대값 |
-   |---|---|
-   | 보안 그룹 이름 / VPC | `task7-web-sg` / `task7-vpc` |
-   | 인바운드 규칙 수 | **2** (HTTP 80 전체, SSH 22 내 IP `/32`) |
-   | 아웃바운드 규칙 수 | 1 (전체 허용, 기본값) |
-   | 전체 포트 허용 인바운드 규칙 | **없음** |
-
-   ![Security Group - 인바운드 규칙](docs/screenshots/5.Security%20Group.png)
-
-   > - SG는 **상태 저장(stateful)** — 허용된 인바운드 요청의 응답은 아웃바운드 규칙과 무관하게 나간다.
-   > - 네트워크(집/카페 등)가 바뀌면 공인 IP가 바뀌어 SSH가 타임아웃 난다 → SSH 규칙 소스를 다시 **내 IP**로 수정.
-   > - "모든 트래픽"/"모든 TCP" 같은 전체 허용 인바운드 규칙은 과제 요구사항 위반.
-
-   </details>
-
-6. **EC2** 시작: Ubuntu 24.04 LTS, `t3.micro`, 키페어 `task7-key` 생성(.pem 보관), 네트워크 `task7-vpc` / `task7-public-subnet` / 퍼블릭 IP 자동 할당 Enable / SG `task7-web-sg`, 스토리지 8GiB gp3
-   → Advanced details → **User data** 에 [`scripts/setup-server.sh`](scripts/setup-server.sh) 내용 전체 붙여넣기
-
-   <details>
-   <summary>상세 절차 (클릭)</summary>
-
-   **(1) 인스턴스 시작 설정** — EC2 콘솔 → **인스턴스 시작**
-
-   | 항목 | 값 |
-   |---|---|
-   | 이름 | `task7-web` |
-   | AMI | **Ubuntu Server 24.04 LTS** (프리 티어 사용 가능, 64비트 x86) |
-   | 인스턴스 유형 | **t3.micro** |
-   | 키 페어 | **새 키 페어 생성** → `task7-key` / RSA / **.pem** → Task7 폴더에 저장 (`.gitignore` 로 커밋 제외) |
-   | 네트워크 설정 → **편집** | VPC `task7-vpc` / 서브넷 `task7-public-subnet` / 퍼블릭 IP 자동 할당 **활성화** |
-   | 방화벽(보안 그룹) | **기존 보안 그룹 선택** → `task7-web-sg` |
-   | 스토리지 | 8 GiB **gp3** (종료 시 삭제) |
-   | 고급 세부 정보 → 메타데이터 버전 | **V2 전용(토큰 필수)** |
-   | 고급 세부 정보 → **사용자 데이터** | [`scripts/setup-server.sh`](scripts/setup-server.sh) 내용 전체 붙여넣기 |
-
-   **(2) 인스턴스 시작** 클릭 → 2~3분 대기 (부팅 + user-data 로 Nginx 설치)
-
-   **(3) 확인** — 인스턴스 요약
-
-   | 항목 | 기대값 | 실제 |
-   |---|---|---|
-   | 인스턴스 상태 | 실행 중 | ✅ 실행 중 |
-   | 인스턴스 유형 | t3.micro | ✅ |
-   | VPC / 서브넷 | `task7-vpc` / `task7-public-subnet` | ✅ |
-   | 퍼블릭 IPv4 / DNS | 자동 할당 / `ec2-…compute.amazonaws.com` | ✅ (VPC DNS hostnames 활성화 결과) |
-   | 프라이빗 IPv4 | `10.0.1.x` | ✅ `10.0.1.173` |
-   | IMDSv2 | Required | ✅ |
-   | 키 페어 | `task7-key` | ✅ |
-
-   ![EC2 - 인스턴스 요약](docs/screenshots/6.EC2-1.png)
-
-   ![EC2 - 인스턴스 세부 정보](docs/screenshots/6.EC2-2.png)
-
-   > - 네트워크 설정은 기본값이 **기본 VPC** 이므로 반드시 **편집**해서 `task7-vpc` 로 변경.
-   > - `.pem` 키는 생성 시 **한 번만** 다운로드 가능.
-   > - IAM 정책상 `t2/t3.micro` 외 유형, 10GiB 초과 볼륨은 **거부**된다.
-   > - 요약 화면의 *AWS Compute Optimizer* 권한 오류(`compute-optimizer:GetEnrollmentStatus … not authorized`)는 콘솔이 부가 서비스를 자동 조회하다 최소권한 정책에 막힌 것 — 실습과 무관하며 **최소권한이 적용된 근거**다.
-
-   </details>
-
-7. 2~3분 후 `http://<퍼블릭IP>/health` 확인
-
-   <details>
-   <summary>상세 결과 (클릭)</summary>
-
-   | 검증 | 결과 |
-   |---|---|
-   | `curl.exe -i http://<퍼블릭IP>/health` | `HTTP/1.1 200 OK` · `Server: nginx/1.24.0 (Ubuntu)` · `Content-Type: text/plain` · 본문 `OK` |
-   | 브라우저 `http://<퍼블릭IP>/` | Hello Cloud 페이지 (Instance ID · AZ `ap-northeast-2a` · Private IP) |
-   | 브라우저 `http://<퍼블릭IP>/health` | `OK` |
-
-   ![외부 접속 - curl](docs/screenshots/external-health.png)
-
-   ![외부 접속 - Hello Cloud](docs/screenshots/7.Hello%20Cloud.png)
-
-   ![외부 접속 - health](docs/screenshots/7.Health.png)
-
-   > - 반드시 **http://** 로 접속 (콘솔의 "개방 주소법" 링크는 https 로 열려 연결 실패).
-   > - 브라우저 주소창의 "주의 요함"은 HTTPS가 아니어서 표시되는 것으로 정상.
-
-   </details>
-
+> 🏢 **한눈에 보는 비유 — AWS 네트워크 = 아파트 단지**
+>
+> | AWS 구성 요소 | 아파트 비유 | 한 줄 설명 |
+> |---|---|---|
+> | **VPC** | 아파트 **단지** 전체 | 나만 쓰는 격리된 사설 네트워크 |
+> | **Subnet** | 단지 안의 **동(棟)** | VPC를 잘게 나눈 구역 (가용 영역 1곳에 위치) |
+> | **Internet Gateway** | 단지 **정문** | VPC ↔ 인터넷 출입구 |
+> | **Route Table** | 동 입구의 **길 안내 표지판** | "밖으로 가려면 정문으로" 같은 경로 규칙 |
+> | **Security Group** | 각 세대 **현관 도어락** | 어떤 손님(IP·포트)을 들여보낼지 결정 |
+> | **EC2** | 동 안의 **세대(집)** | 실제로 웹 서버가 돌아가는 가상 컴퓨터 |
+> | **퍼블릭 IP / DNS** | 외부에서 찾아올 **도로명 주소** | 인터넷에서 이 서버를 찾아오는 주소 |
+
+<details>
+<summary><b>1단계 · VPC 생성</b> (클릭해서 펼치기)</summary>
+<p><strong>VPC</strong> 생성: <code>task7-vpc</code>, <code>10.0.0.0/16</code> → Actions → Edit VPC settings → DNS hostnames 활성화</p>
+<blockquote>
+<p>💡 <strong>개념 — VPC와 DNS</strong></p>
+<ul>
+<li><strong>VPC(Virtual Private Cloud)</strong> = AWS 안에 만드는 <strong>나만의 격리된 네트워크</strong>. 다른 고객의 서버와 섞이지 않는 울타리 친 단지.</li>
+<li><strong>CIDR(Classless Inter-Domain Routing) <code>10.0.0.0/16</code></strong> = 이 단지에서 쓸 <strong>사설 IP 주소 범위</strong>. <code>/16</code> 은 앞 16비트(<code>10.0</code>)가 고정 → <code>10.0.0.0 ~ 10.0.255.255</code>, 약 <strong>65,536개</strong> 주소.</li>
+<li><strong>DNS(Domain Name System)</strong> = <strong>이름 → IP 주소 변환기</strong>(인터넷 전화번호부). 사람이 <code>google.com</code> 을 입력하면 DNS가 <code>142.250.x.x</code> 로 바꿔 준다.</li>
+<li><strong>DNS resolution(확인)</strong> = VPC 안의 서버가 DNS 질문을 할 수 있게 함 (기본 ON).</li>
+<li><strong>DNS hostnames(호스트 이름)</strong> = VPC 안의 서버에 <code>ec2-3-36-131-116.ap-northeast-2.compute.amazonaws.com</code> 같은 <strong>이름표를 붙여 줌</strong> → 이걸 켜야 EC2에 퍼블릭 DNS 이름이 생긴다.</li>
+</ul>
+</blockquote>
+<details>
+<summary>상세 절차 (클릭)</summary>
+<p><strong>(0) 리전 확인</strong> — 콘솔 우측 상단 리전이 <strong>아시아 태평양(서울) <code>ap-northeast-2</code></strong> 인지 확인</p>
+<p><strong>(1) VPC 생성</strong></p>
+<ol>
+<li>
+<p>상단 검색창 <code>VPC</code> → <strong>VPC</strong> 서비스 → 왼쪽 <strong>Your VPCs(VPC)</strong> → <strong>Create VPC(VPC 생성)</strong></p>
+</li>
+<li>
+<p>설정 입력</p>
+<table>
+<thead>
+<tr>
+<th>항목</th>
+<th>값</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Resources to create (생성할 리소스)</td>
+<td><strong>VPC only (VPC만)</strong></td>
+</tr>
+<tr>
+<td>Name tag (이름 태그)</td>
+<td><code>task7-vpc</code></td>
+</tr>
+<tr>
+<td>IPv4 CIDR block</td>
+<td>IPv4 CIDR manual input (수동 입력)</td>
+</tr>
+<tr>
+<td>IPv4 CIDR</td>
+<td><code>10.0.0.0/16</code></td>
+</tr>
+<tr>
+<td>IPv6 CIDR block</td>
+<td>No IPv6 CIDR block</td>
+</tr>
+<tr>
+<td>Tenancy (테넌시)</td>
+<td>Default (기본값)</td>
+</tr>
+</tbody>
+</table>
+</li>
+<li>
+<p><strong>Create VPC</strong> 클릭</p>
+</li>
+</ol>
+<blockquote>
+<p>⚠️ <em>VPC and more(VPC 등)</em> 를 선택하면 서브넷·라우팅 테이블·NAT 등이 자동 생성된다. 이후 단계에서 직접 만들므로 <strong>VPC only</strong> 선택.</p>
+</blockquote>
+<p><strong>(2) DNS hostnames 활성화</strong></p>
+<ol>
+<li><code>task7-vpc</code> 선택 → 우측 상단 <strong>Actions(작업)</strong> → <strong>Edit VPC settings(VPC 설정 편집)</strong></li>
+<li>DNS settings
+<ul>
+<li>☑ Enable DNS resolution (DNS 확인 활성화) — 기본값으로 체크됨</li>
+<li>☑ <strong>Enable DNS hostnames (DNS 호스트 이름 활성화)</strong> — <strong>체크</strong></li>
+</ul>
+</li>
+<li><strong>Save(저장)</strong></li>
+</ol>
+<p><strong>(3) 확인</strong> — VPC <strong>Details</strong> 탭에서 <code>DNS hostnames: Enabled</code> 확인</p>
+<blockquote>
+<p>DNS hostnames 를 켜야 퍼블릭 IP를 받은 EC2에 <code>ec2-x-x-x-x.ap-northeast-2.compute.amazonaws.com</code> 형태의 퍼블릭 DNS 이름이 부여된다.</p>
+</blockquote>
+</details>
+<p><strong>📸 증빙 캡처</strong></p>
+<p><img width="100%" src="docs/screenshots/1.VPC.png" alt="VPC - 세부 정보 (DNS 호스트 이름 활성화됨)" /></p>
+</details>
+
+<details>
+<summary><b>2단계 · Subnet 생성</b> (클릭해서 펼치기)</summary>
+<p><strong>Subnet</strong> 생성: <code>task7-public-subnet</code>, <code>10.0.1.0/24</code>, <code>ap-northeast-2a</code> → Edit subnet settings → <em>Enable auto-assign public IPv4</em> 체크</p>
+<blockquote>
+<p>💡 <strong>개념 — Subnet · 가용 영역 · 퍼블릭 IP</strong></p>
+<ul>
+<li><strong>Subnet</strong> = VPC 주소 범위를 <strong>잘게 나눈 구역</strong>. <code>10.0.1.0/24</code> → <code>10.0.1.0 ~ 10.0.1.255</code> (256개 중 AWS 예약 5개 제외 <strong>251개</strong> 사용 가능).</li>
+<li><strong>가용 영역(AZ, Availability Zone · <code>ap-northeast-2a</code>)</strong> = 서울 리전 안의 <strong>물리적으로 분리된 데이터센터</strong>. 서브넷은 AZ 하나에 속한다.</li>
+<li><strong>퍼블릭 서브넷 vs 프라이빗 서브넷</strong> = 이름이 아니라 <strong>인터넷(IGW)으로 가는 길이 있느냐</strong>로 결정된다 (4번 Route Table 참고).</li>
+<li><strong>프라이빗 IP vs 퍼블릭 IP (IP = Internet Protocol 주소)</strong> = 프라이빗(<code>10.0.1.173</code>)은 <strong>단지 내부 호수</strong>, 퍼블릭(<code>3.36.131.116</code>)은 <strong>외부 도로명 주소</strong>. <em>자동 할당</em>을 켜면 EC2가 생길 때 퍼블릭 IP가 자동으로 붙는다.</li>
+</ul>
+</blockquote>
+<details>
+<summary>상세 절차 (클릭)</summary>
+<p><strong>(1) 서브넷 생성</strong></p>
+<ol>
+<li>
+<p>VPC 콘솔 왼쪽 <strong>Subnets(서브넷)</strong> → <strong>Create subnet(서브넷 생성)</strong></p>
+</li>
+<li>
+<p><strong>VPC ID</strong> 에서 <strong><code>task7-vpc</code></strong> 선택 (선택해야 아래 입력란이 나타남)</p>
+</li>
+<li>
+<p>Subnet settings(서브넷 설정)</p>
+<table>
+<thead>
+<tr>
+<th>항목</th>
+<th>값</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Subnet name (서브넷 이름)</td>
+<td><code>task7-public-subnet</code></td>
+</tr>
+<tr>
+<td>Availability Zone (가용 영역)</td>
+<td>아시아 태평양(서울) / <code>ap-northeast-2a</code></td>
+</tr>
+<tr>
+<td>IPv4 VPC CIDR block</td>
+<td><code>10.0.0.0/16</code> (자동 선택)</td>
+</tr>
+<tr>
+<td>IPv4 subnet CIDR block</td>
+<td><code>10.0.1.0/24</code></td>
+</tr>
+</tbody>
+</table>
+</li>
+<li>
+<p><strong>Create subnet</strong> 클릭</p>
+</li>
+</ol>
+<blockquote>
+<p>⚠️ VPC ID를 기본 VPC(<code>172.31.0.0/16</code>)로 잘못 선택하는 실수가 가장 흔하다. 반드시 <code>task7-vpc</code> 확인.</p>
+</blockquote>
+<p><strong>(2) 퍼블릭 IPv4 자동 할당 활성화</strong></p>
+<ol>
+<li><code>task7-public-subnet</code> 선택 → <strong>Actions(작업)</strong> → <strong>Edit subnet settings(서브넷 설정 편집)</strong></li>
+<li>Auto-assign IP settings → ☑ <strong>Enable auto-assign public IPv4 address (퍼블릭 IPv4 주소 자동 할당 활성화)</strong></li>
+<li><strong>Save(저장)</strong></li>
+</ol>
+<p><strong>(3) 확인</strong> — 서브넷 <strong>세부 정보</strong> 탭</p>
+<table>
+<thead>
+<tr>
+<th>항목</th>
+<th>기대값</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>VPC</td>
+<td><code>task7-vpc</code></td>
+</tr>
+<tr>
+<td>IPv4 CIDR</td>
+<td><code>10.0.1.0/24</code> (사용 가능 IP 251개 — /24 256개 중 AWS 예약 5개 제외)</td>
+</tr>
+<tr>
+<td>가용 영역</td>
+<td><code>apne2-az1 (ap-northeast-2a)</code></td>
+</tr>
+<tr>
+<td>퍼블릭 IPv4 주소 자동 할당</td>
+<td><strong>예</strong></td>
+</tr>
+<tr>
+<td>기본 서브넷</td>
+<td>아니요</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<ul>
+<li>목록의 <strong>퍼블릭 액세스 차단: 끄기</strong> 는 자동 할당과 <strong>별개 설정</strong>이며 &quot;끄기&quot;가 정상이다.</li>
+<li>목록의 <code>172.31.x.x/20</code> 서브넷 4개는 AWS 기본 VPC 소속이므로 건드리지 않는다.</li>
+<li>서브넷의 가용 영역은 생성 후 변경할 수 없다(잘못 만들면 삭제 후 재생성).</li>
+</ul>
+</blockquote>
+</details>
+<p><strong>📸 증빙 캡처</strong></p>
+<p><img width="100%" src="docs/screenshots/2.Subnet.png" alt="Subnet - 세부 정보 (퍼블릭 IPv4 자동 할당: 예)" /></p>
+</details>
+
+<details>
+<summary><b>3단계 · Internet Gateway 생성 · 연결</b> (클릭해서 펼치기)</summary>
+<p><strong>Internet Gateway</strong> 생성: <code>task7-igw</code> → Attach to VPC → <code>task7-vpc</code></p>
+<blockquote>
+<p>💡 <strong>개념 — IGW(Internet Gateway, 인터넷 게이트웨이)</strong></p>
+<ul>
+<li>VPC와 인터넷을 잇는 <strong>정문</strong>. IGW가 없으면 VPC는 외부와 완전히 단절된 섬이다.</li>
+<li>퍼블릭 IP ↔ 프라이빗 IP <strong>주소 변환</strong>도 IGW가 처리한다 (밖에서 <code>3.36.131.116</code> 으로 오면 안에서 <code>10.0.1.173</code> 으로 전달).</li>
+<li>정문을 <strong>만들기만</strong> 해서는 안 되고, VPC에 <strong>붙이고(Attach)</strong>, 다음 단계에서 <strong>길 안내(Route)</strong> 까지 해 줘야 통한다.</li>
+</ul>
+</blockquote>
+<details>
+<summary>상세 절차 (클릭)</summary>
+<p><strong>(1) 인터넷 게이트웨이 생성</strong></p>
+<ol>
+<li>VPC 콘솔 왼쪽 <strong>Internet gateways(인터넷 게이트웨이)</strong> → <strong>Create internet gateway(인터넷 게이트웨이 생성)</strong></li>
+<li>Name tag(이름 태그): <code>task7-igw</code></li>
+<li><strong>Create internet gateway</strong> 클릭 → 이 시점 상태는 <strong>Detached</strong></li>
+</ol>
+<p><strong>(2) VPC에 연결 (Attach)</strong></p>
+<ol>
+<li>생성 직후 상단 초록 배너의 <strong>Attach to a VPC(VPC에 연결)</strong> 클릭
+(배너를 놓쳤으면 <code>task7-igw</code> 선택 → <strong>Actions(작업)</strong> → <strong>Attach to VPC(VPC에 연결)</strong>)</li>
+<li>Available VPCs(사용 가능한 VPC): <strong><code>task7-vpc</code></strong> 선택</li>
+<li><strong>Attach internet gateway(인터넷 게이트웨이 연결)</strong> 클릭</li>
+</ol>
+<p><strong>(3) 확인</strong></p>
+<table>
+<thead>
+<tr>
+<th>항목</th>
+<th>기대값</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>State (상태)</td>
+<td><strong>Attached</strong></td>
+</tr>
+<tr>
+<td>VPC ID</td>
+<td><code>vpc-… | task7-vpc</code></td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<ul>
+<li>IGW는 VPC당 <strong>1개만</strong> 연결할 수 있다. 목록에 이미 있는 다른 IGW는 기본 VPC 소속이므로 건드리지 않는다.</li>
+<li>IGW를 연결만 해서는 인터넷이 되지 않는다. 다음 단계 Route Table에 <code>0.0.0.0/0 → task7-igw</code> 경로를 추가해야 서브넷이 &quot;퍼블릭&quot;이 된다.</li>
+<li>정리 시에는 <strong>Detach → Delete</strong> 순서 (연결된 상태로는 삭제 불가).</li>
+</ul>
+</blockquote>
+</details>
+<p><strong>📸 증빙 캡처</strong></p>
+<p><img width="100%" src="docs/screenshots/3.Internet%20gateway.png" alt="Internet Gateway - Attached" /></p>
+</details>
+
+<details>
+<summary><b>4단계 · Route Table 생성 · 경로 · 서브넷 연결</b> (클릭해서 펼치기)</summary>
+<p><strong>Route Table</strong> 생성: <code>task7-public-rt</code> → Routes 편집 <code>0.0.0.0/0 → task7-igw</code> → Subnet associations 에 Public Subnet 연결</p>
+<blockquote>
+<p>💡 <strong>개념 — RT(Route Table, 라우팅 테이블)</strong></p>
+<ul>
+<li>패킷이 <strong>어디로 가야 하는지</strong> 적어 둔 <strong>길 안내 표지판(내비게이션 규칙)</strong>.</li>
+<li><code>10.0.0.0/16 → local</code> = &quot;단지 안 주소면 <strong>내부에서</strong> 전달&quot; (자동 생성).</li>
+<li><code>0.0.0.0/0 → igw</code> = &quot;<strong>그 외 모든 주소</strong>(=인터넷)는 <strong>정문(IGW)</strong> 으로&quot; — <code>0.0.0.0/0</code> 은 &quot;모든 IP&quot;를 뜻한다.</li>
+<li>이 테이블을 서브넷에 <strong>연결</strong>하는 순간 그 서브넷이 <strong>퍼블릭 서브넷</strong>이 된다. 연결 안 하면 VPC 기본 테이블(<code>local</code> 만 있음)을 따라 인터넷이 안 된다.</li>
+</ul>
+</blockquote>
+<details>
+<summary>상세 절차 (클릭)</summary>
+<p><strong>(1) 라우팅 테이블 생성</strong></p>
+<ol>
+<li>VPC 콘솔 왼쪽 <strong>Route tables(라우팅 테이블)</strong> → <strong>Create route table(라우팅 테이블 생성)</strong></li>
+<li>Name(이름): <code>task7-public-rt</code> / VPC: <strong><code>task7-vpc</code></strong></li>
+<li><strong>Create route table</strong> 클릭 → 이 시점에는 <code>10.0.0.0/16 → local</code> 경로 1개만 존재</li>
+</ol>
+<p><strong>(2) 인터넷 경로 추가</strong></p>
+<ol>
+<li><strong>Routes(라우팅)</strong> 탭 → <strong>Edit routes(라우팅 편집)</strong> → <strong>Add route(라우팅 추가)</strong></li>
+<li>Destination(대상): <code>0.0.0.0/0</code> / Target(대상): <strong>Internet Gateway</strong> → <code>task7-igw</code> 선택</li>
+<li><strong>Save changes(변경 사항 저장)</strong></li>
+</ol>
+<p><strong>(3) 서브넷 연결</strong></p>
+<ol>
+<li><strong>Subnet associations(서브넷 연결)</strong> 탭 → <strong>명시적 서브넷 연결</strong> 의 <strong>Edit subnet associations(서브넷 연결 편집)</strong></li>
+<li>☑ <code>task7-public-subnet</code> 체크 → <strong>Save associations(연결 저장)</strong></li>
+</ol>
+<p><strong>(4) 확인</strong></p>
+<table>
+<thead>
+<tr>
+<th>위치</th>
+<th>항목</th>
+<th>기대값</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>라우팅 탭</td>
+<td><code>0.0.0.0/0</code></td>
+<td>→ <code>igw-…</code> (task7-igw) · 활성</td>
+</tr>
+<tr>
+<td>라우팅 탭</td>
+<td><code>10.0.0.0/16</code></td>
+<td>→ <code>local</code> · 활성 (자동 생성)</td>
+</tr>
+<tr>
+<td>서브넷 연결 탭</td>
+<td>명시적 서브넷 연결</td>
+<td><code>task7-public-subnet</code> (<code>10.0.1.0/24</code>)</td>
+</tr>
+<tr>
+<td>세부 정보</td>
+<td>VPC / 기본</td>
+<td><code>task7-vpc</code> / 아니요</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<ul>
+<li><code>0.0.0.0/0 → IGW</code> 경로가 있는 라우팅 테이블에 연결된 서브넷이 곧 <strong>퍼블릭 서브넷</strong>이다.</li>
+<li>서브넷을 명시적으로 연결하지 않으면 VPC의 <strong>기본(main) 라우팅 테이블</strong>(local 경로만 있음)을 따르므로 외부 접속이 안 된다.</li>
+<li>정리 시에는 <strong>서브넷 연결 해제 → 라우팅 테이블 삭제</strong> 순서.</li>
+</ul>
+</blockquote>
+</details>
+<p><strong>📸 증빙 캡처</strong></p>
+<p><img width="100%" src="docs/screenshots/4.Route%20Table-1.png" alt="Route Table - 라우팅" /></p>
+<p><img width="100%" src="docs/screenshots/4.Route%20Table-2.png" alt="Route Table - 서브넷 연결" /></p>
+</details>
+
+<details>
+<summary><b>5단계 · Security Group 생성</b> (클릭해서 펼치기)</summary>
+<p><strong>Security Group</strong> 생성 (<code>task7-vpc</code>): 인바운드 <code>HTTP 80 / 0.0.0.0/0</code>, <code>SSH 22 / My IP</code></p>
+<blockquote>
+<p>💡 <strong>개념 — SG(Security Group, 보안 그룹)와 포트</strong></p>
+<ul>
+<li>EC2 앞에 붙는 <strong>가상 방화벽 = 현관 도어락</strong>. 규칙에 <strong>허용된 것만</strong> 들어오고 나머지는 전부 차단.</li>
+<li><strong>포트(Port)</strong> = 한 컴퓨터 안의 <strong>서비스별 출입문 번호</strong>. <code>80</code> = 웹(HTTP, HyperText Transfer Protocol), <code>443</code> = HTTPS(HTTP Secure, 암호화된 HTTP), <code>22</code> = 원격 접속(SSH, Secure Shell).</li>
+<li><strong>인바운드</strong> = 밖 → 서버로 들어오는 요청 / <strong>아웃바운드</strong> = 서버 → 밖으로 나가는 요청.</li>
+<li><strong>HTTP 80 ← <code>0.0.0.0/0</code></strong> = 웹 페이지는 <strong>누구나</strong> 볼 수 있게. <strong>SSH 22 ← 내 IP <code>/32</code></strong> = 서버 관리 문은 <strong>내 컴퓨터만</strong> (<code>/32</code> = IP 딱 1개).</li>
+<li><strong>상태 저장(Stateful)</strong> = 들어온 요청에 대한 <strong>응답은 자동 허용</strong> → 응답용 아웃바운드 규칙을 따로 만들 필요 없음.</li>
+</ul>
+</blockquote>
+<details>
+<summary>상세 절차 (클릭)</summary>
+<p><strong>(1) 기본 세부 정보</strong></p>
+<ol>
+<li>
+<p>VPC 콘솔 왼쪽 <strong>보안 → Security groups(보안 그룹)</strong> → <strong>Create security group(보안 그룹 생성)</strong></p>
+</li>
+<li>
+<p>입력</p>
+<table>
+<thead>
+<tr>
+<th>항목</th>
+<th>값</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>보안 그룹 이름</td>
+<td><code>task7-web-sg</code></td>
+</tr>
+<tr>
+<td>설명</td>
+<td><code>Task7 web server SG</code> (영문만 가능)</td>
+</tr>
+<tr>
+<td>VPC</td>
+<td><strong><code>task7-vpc</code></strong> (기본 VPC가 선택되어 있으므로 반드시 변경)</td>
+</tr>
+</tbody>
+</table>
+</li>
+</ol>
+<p><strong>(2) 인바운드 규칙</strong> — <strong>규칙 추가</strong> 2회</p>
+<table>
+<thead>
+<tr>
+<th>유형</th>
+<th>프로토콜</th>
+<th>포트</th>
+<th>소스</th>
+<th>설명</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>HTTP</td>
+<td>TCP</td>
+<td>80</td>
+<td>Anywhere-IPv4 <code>0.0.0.0/0</code></td>
+<td>web</td>
+</tr>
+<tr>
+<td>SSH</td>
+<td>TCP</td>
+<td>22</td>
+<td><strong>내 IP</strong> <code>x.x.x.x/32</code> (자동 입력)</td>
+<td>my ip ssh</td>
+</tr>
+</tbody>
+</table>
+<p><strong>(3) 아웃바운드 규칙</strong> — 기본값(모든 트래픽 → <code>0.0.0.0/0</code>) 유지. 인스턴스의 <code>curl https://example.com</code> 아웃바운드 검증에 필요</p>
+<p><strong>(4) Create security group</strong> 클릭</p>
+<p><strong>(5) 확인</strong></p>
+<table>
+<thead>
+<tr>
+<th>항목</th>
+<th>기대값</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>보안 그룹 이름 / VPC</td>
+<td><code>task7-web-sg</code> / <code>task7-vpc</code></td>
+</tr>
+<tr>
+<td>인바운드 규칙 수</td>
+<td><strong>2</strong> (HTTP 80 전체, SSH 22 내 IP <code>/32</code>)</td>
+</tr>
+<tr>
+<td>아웃바운드 규칙 수</td>
+<td>1 (전체 허용, 기본값)</td>
+</tr>
+<tr>
+<td>전체 포트 허용 인바운드 규칙</td>
+<td><strong>없음</strong></td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<ul>
+<li>SG는 <strong>상태 저장(stateful)</strong> — 허용된 인바운드 요청의 응답은 아웃바운드 규칙과 무관하게 나간다.</li>
+<li>네트워크(집/카페 등)가 바뀌면 공인 IP가 바뀌어 SSH가 타임아웃 난다 → SSH 규칙 소스를 다시 <strong>내 IP</strong>로 수정.</li>
+<li>&quot;모든 트래픽&quot;/&quot;모든 TCP&quot; 같은 전체 허용 인바운드 규칙은 과제 요구사항 위반.</li>
+</ul>
+</blockquote>
+</details>
+<p><strong>📸 증빙 캡처</strong></p>
+<p><img width="100%" src="docs/screenshots/5.Security%20Group.png" alt="Security Group - 인바운드 규칙" /></p>
+</details>
+
+<details>
+<summary><b>6단계 · EC2 시작</b> (클릭해서 펼치기)</summary>
+<p><strong>EC2</strong> 시작: Ubuntu 24.04 LTS, <code>t3.micro</code>, 키페어 <code>task7-key</code> 생성(.pem 보관), 네트워크 <code>task7-vpc</code> / <code>task7-public-subnet</code> / 퍼블릭 IP 자동 할당 Enable / SG <code>task7-web-sg</code>, 스토리지 8GiB gp3
+→ Advanced details → <strong>User data</strong> 에 <a href="scripts/setup-server.sh"><code>scripts/setup-server.sh</code></a> 내용 전체 붙여넣기</p>
+<blockquote>
+<p>💡 <strong>개념 — EC2와 부속 요소</strong></p>
+<ul>
+<li><strong>EC2(Elastic Compute Cloud)</strong> = AWS에서 빌리는 <strong>가상 컴퓨터</strong>. 필요할 때 켜고, 다 쓰면 반납(종료).</li>
+<li><strong>AMI(Amazon Machine Image)</strong> = 컴퓨터에 설치할 <strong>OS 설치 이미지</strong> (여기선 Ubuntu 24.04). <strong>인스턴스 유형 <code>t3.micro</code></strong> = vCPU(virtual Central Processing Unit, 가상 CPU) 2개·메모리 1GiB짜리 <strong>사양</strong>. (<code>t</code> = 범용 버스트형 계열, <code>3</code> = 세대, <code>micro</code> = 크기)</li>
+<li><strong>키 페어(.pem)</strong> = SSH 접속용 <strong>열쇠</strong>. AWS는 자물쇠(공개키)만 갖고, 열쇠(개인키 <code>.pem</code>)는 <strong>나만</strong> 가진다 → 잃어버리면 재발급 불가.</li>
+<li><strong>EBS(Elastic Block Store) · gp3(General Purpose SSD 3세대) 8GiB(Gibibyte)</strong> = EC2에 꽂는 <strong>가상 하드디스크</strong>. <em>종료 시 삭제</em> 를 켜 두면 서버 반납 때 같이 사라져 요금이 안 남는다.</li>
+<li><strong>User data</strong> = 서버가 <strong>처음 부팅할 때 딱 한 번 자동 실행되는 스크립트</strong> → Nginx 설치·페이지 생성을 사람이 접속하지 않아도 끝내 준다.</li>
+<li><strong>IMDSv2(Instance Metadata Service version 2)</strong> = 서버가 자기 정보를 조회하는 내부 주소(메타데이터)에 <strong>토큰 인증</strong>을 강제해 해킹 위험을 줄이는 설정.</li>
+</ul>
+</blockquote>
+<details>
+<summary>상세 절차 (클릭)</summary>
+<p><strong>(1) 인스턴스 시작 설정</strong> — EC2 콘솔 → <strong>인스턴스 시작</strong></p>
+<table>
+<thead>
+<tr>
+<th>항목</th>
+<th>값</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>이름</td>
+<td><code>task7-web</code></td>
+</tr>
+<tr>
+<td>AMI</td>
+<td><strong>Ubuntu Server 24.04 LTS</strong> (프리 티어 사용 가능, 64비트 x86)</td>
+</tr>
+<tr>
+<td>인스턴스 유형</td>
+<td><strong>t3.micro</strong></td>
+</tr>
+<tr>
+<td>키 페어</td>
+<td><strong>새 키 페어 생성</strong> → <code>task7-key</code> / RSA / <strong>.pem</strong> → Task7 폴더에 저장 (<code>.gitignore</code> 로 커밋 제외)</td>
+</tr>
+<tr>
+<td>네트워크 설정 → <strong>편집</strong></td>
+<td>VPC <code>task7-vpc</code> / 서브넷 <code>task7-public-subnet</code> / 퍼블릭 IP 자동 할당 <strong>활성화</strong></td>
+</tr>
+<tr>
+<td>방화벽(보안 그룹)</td>
+<td><strong>기존 보안 그룹 선택</strong> → <code>task7-web-sg</code></td>
+</tr>
+<tr>
+<td>스토리지</td>
+<td>8 GiB <strong>gp3</strong> (종료 시 삭제)</td>
+</tr>
+<tr>
+<td>고급 세부 정보 → 메타데이터 버전</td>
+<td><strong>V2 전용(토큰 필수)</strong></td>
+</tr>
+<tr>
+<td>고급 세부 정보 → <strong>사용자 데이터</strong></td>
+<td><a href="scripts/setup-server.sh"><code>scripts/setup-server.sh</code></a> 내용 전체 붙여넣기</td>
+</tr>
+</tbody>
+</table>
+<p><strong>(2) 인스턴스 시작</strong> 클릭 → 2~3분 대기 (부팅 + user-data 로 Nginx 설치)</p>
+<p><strong>(3) 확인</strong> — 인스턴스 요약</p>
+<table>
+<thead>
+<tr>
+<th>항목</th>
+<th>기대값</th>
+<th>실제</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>인스턴스 상태</td>
+<td>실행 중</td>
+<td>✅ 실행 중</td>
+</tr>
+<tr>
+<td>인스턴스 유형</td>
+<td>t3.micro</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>VPC / 서브넷</td>
+<td><code>task7-vpc</code> / <code>task7-public-subnet</code></td>
+<td>✅</td>
+</tr>
+<tr>
+<td>퍼블릭 IPv4 / DNS</td>
+<td>자동 할당 / <code>ec2-…compute.amazonaws.com</code></td>
+<td>✅ (VPC DNS hostnames 활성화 결과)</td>
+</tr>
+<tr>
+<td>프라이빗 IPv4</td>
+<td><code>10.0.1.x</code></td>
+<td>✅ <code>10.0.1.173</code></td>
+</tr>
+<tr>
+<td>IMDSv2</td>
+<td>Required</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>키 페어</td>
+<td><code>task7-key</code></td>
+<td>✅</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<ul>
+<li>네트워크 설정은 기본값이 <strong>기본 VPC</strong> 이므로 반드시 <strong>편집</strong>해서 <code>task7-vpc</code> 로 변경.</li>
+<li><code>.pem</code> 키는 생성 시 <strong>한 번만</strong> 다운로드 가능.</li>
+<li>IAM 정책상 <code>t2/t3.micro</code> 외 유형, 10GiB 초과 볼륨은 <strong>거부</strong>된다.</li>
+<li>요약 화면의 <em>AWS Compute Optimizer</em> 권한 오류(<code>compute-optimizer:GetEnrollmentStatus … not authorized</code>)는 콘솔이 부가 서비스를 자동 조회하다 최소권한 정책에 막힌 것 — 실습과 무관하며 <strong>최소권한이 적용된 근거</strong>다.</li>
+</ul>
+</blockquote>
+</details>
+<p><strong>📸 증빙 캡처</strong></p>
+<p><img width="100%" src="docs/screenshots/6.EC2-1.png" alt="EC2 - 인스턴스 요약" /></p>
+<p><img width="100%" src="docs/screenshots/6.EC2-2.png" alt="EC2 - 인스턴스 세부 정보" /></p>
+</details>
+
+<details>
+<summary><b>7단계 · 접속 확인 (/health)</b> (클릭해서 펼치기)</summary>
+<p>2~3분 후 <code>http://&lt;퍼블릭IP&gt;/health</code> 확인</p>
+<blockquote>
+<p>💡 <strong>개념 — Nginx · HTTP 상태 코드 · 헬스 체크</strong></p>
+<ul>
+<li><strong>Nginx(엔진엑스, &quot;engine x&quot;)</strong> = 요청을 받아 웹 페이지를 돌려주는 <strong>웹 서버 프로그램</strong> (80번 포트에서 대기).</li>
+<li><strong>HTTP(HyperText Transfer Protocol) 상태 코드</strong> = 서버의 대답 요약. <strong><code>200 OK</code></strong> = 성공, <code>404</code> = 없는 페이지, <code>5xx</code> = 서버 오류.</li>
+<li><strong><code>/health</code> (헬스 체크)</strong> = &quot;서버 살아 있어?&quot; 를 확인하는 <strong>전용 주소</strong>. 항상 <code>OK</code> 한 단어만 돌려줘 자동 점검 도구가 쓰기 쉽다.</li>
+<li><strong>외부 요청이 도달하는 경로</strong>: 내 PC → 인터넷 → <strong>IGW(정문)</strong> → <strong>Route Table(길 안내)</strong> → <strong>Subnet(동)</strong> → <strong>Security Group(도어락, 80 허용)</strong> → <strong>EC2 Nginx(집)</strong>. 하나라도 빠지면 타임아웃.</li>
+</ul>
+</blockquote>
+<details>
+<summary>상세 결과 (클릭)</summary>
+<table>
+<thead>
+<tr>
+<th>검증</th>
+<th>결과</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>curl.exe -i http://&lt;퍼블릭IP&gt;/health</code></td>
+<td><code>HTTP/1.1 200 OK</code> · <code>Server: nginx/1.24.0 (Ubuntu)</code> · <code>Content-Type: text/plain</code> · 본문 <code>OK</code></td>
+</tr>
+<tr>
+<td>브라우저 <code>http://&lt;퍼블릭IP&gt;/</code></td>
+<td>Hello Cloud 페이지 (Instance ID · AZ <code>ap-northeast-2a</code> · Private IP)</td>
+</tr>
+<tr>
+<td>브라우저 <code>http://&lt;퍼블릭IP&gt;/health</code></td>
+<td><code>OK</code></td>
+</tr>
+</tbody>
+</table>
+<p><img width="100%" src="docs/screenshots/external-health.png" alt="외부 접속 - curl" /></p>
+<p><img width="100%" src="docs/screenshots/7.Hello%20Cloud.png" alt="외부 접속 - Hello Cloud" /></p>
+<p><img width="100%" src="docs/screenshots/7.Health.png" alt="외부 접속 - health" /></p>
+<blockquote>
+<ul>
+<li>반드시 <strong>http://</strong> 로 접속 (콘솔의 &quot;개방 주소법&quot; 링크는 https 로 열려 연결 실패).</li>
+<li>브라우저 주소창의 &quot;주의 요함&quot;은 HTTPS가 아니어서 표시되는 것으로 정상.</li>
+</ul>
+</blockquote>
+</details>
+</details>
 
 #### 방법 B. AWS CLI 스크립트 (Git Bash / WSL / macOS)
 
@@ -388,6 +984,12 @@ bash infra/provision.sh          # 내 IP 자동 조회 → 전체 생성 → /h
 ```
 
 ### 3단계. 검증
+
+> 💡 **개념 — SSH · scp · 아웃바운드**
+> - **SSH(Secure Shell)** = 원격 서버에 **암호화된 터미널**로 접속하는 방법. `ssh -i 열쇠.pem 사용자@주소` 형태 (Ubuntu AMI의 기본 사용자는 `ubuntu`).
+> - **scp(Secure Copy Protocol)** = SSH 통로로 **파일을 복사**하는 명령 (내 PC → 서버).
+> - **`curl`(Client URL, URL = Uniform Resource Locator)** = 터미널에서 웹 주소를 호출해 응답을 보는 도구. `curl http://localhost` = 서버가 **자기 자신**에게 요청 → Nginx 자체가 정상인지 확인.
+> - **아웃바운드 확인** (`curl https://example.com`) = 서버가 **밖으로 나갈 수 있는지** (패키지 설치·업데이트에 필요).
 
 ```bash
 # (1) SSH 접속 — Windows 는 먼저 키 권한 정리: docs/troubleshooting.md 사례 1 참고
@@ -414,24 +1016,66 @@ curl.exe -i http://<퍼블릭IP>/health
 
 <details>
 <summary>검증 결과 (클릭)</summary>
+<table>
+<thead>
+<tr>
+<th>검증</th>
+<th>결과</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>scp 스크립트 복사</td>
+<td><code>verify-instance.sh 100%</code></td>
+</tr>
+<tr>
+<td>SSH 접속</td>
+<td><code>ubuntu@ip-10-0-1-173</code> · Ubuntu 24.04.4 LTS · <code>10.0.1.173</code></td>
+</tr>
+<tr>
+<td>아웃바운드 <code>curl https://example.com</code></td>
+<td><code>HTTP/2 200</code> ✅</td>
+</tr>
+<tr>
+<td>nginx 서비스 / 80 LISTEN</td>
+<td><code>active</code> / LISTEN ✅</td>
+</tr>
+<tr>
+<td><code>curl http://localhost</code></td>
+<td>200 ✅</td>
+</tr>
+<tr>
+<td><code>curl http://localhost/health</code></td>
+<td><code>HTTP/1.1 200 OK</code> · 본문 <code>OK</code> ✅</td>
+</tr>
+<tr>
+<td><strong>종합</strong></td>
+<td><strong>PASS=6 FAIL=0</strong></td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>SSH 로그인 시 표시되는 <code>172 updates</code> / <code>New release '26.04.1 LTS'</code> 안내는 과제와 무관하므로 업그레이드하지 않는다.</p>
+</blockquote>
+</details>
 
-| 검증 | 결과 |
-|---|---|
-| scp 스크립트 복사 | `verify-instance.sh 100%` |
-| SSH 접속 | `ubuntu@ip-10-0-1-173` · Ubuntu 24.04.4 LTS · `10.0.1.173` |
-| 아웃바운드 `curl https://example.com` | `HTTP/2 200` ✅ |
-| nginx 서비스 / 80 LISTEN | `active` / LISTEN ✅ |
-| `curl http://localhost` | 200 ✅ |
-| `curl http://localhost/health` | `HTTP/1.1 200 OK` · 본문 `OK` ✅ |
-| **종합** | **PASS=6 FAIL=0** |
+**📸 증빙 캡처 — SSH 접속** (`scp` 로 점검 스크립트 복사 → `ssh -i task7-key.pem ubuntu@3.36.131.116` → `ubuntu@ip-10-0-1-173` 로그인)
 
 ![SSH 접속](docs/screenshots/8.%EA%B2%80%EC%A6%9D.png)
 
+**📸 증빙 캡처 — 인스턴스 내부 점검** (`bash verify-instance.sh` → PASS=6 FAIL=0)
+
 ![인스턴스 내부 점검](docs/screenshots/instance-verify.png)
 
-> SSH 로그인 시 표시되는 `172 updates` / `New release '26.04.1 LTS'` 안내는 과제와 무관하므로 업그레이드하지 않는다.
+**📸 증빙 캡처 — 외부 접속 검증** (내 PC → 인터넷 → 서버)
 
-</details>
+| 내 PC `curl.exe -i http://3.36.131.116/health` → `200 OK` / `OK` | 브라우저 `http://3.36.131.116/health` → `OK` |
+|---|---|
+| ![외부 접속 - curl](docs/screenshots/external-health.png) | ![외부 접속 - health](docs/screenshots/7.Health.png) |
+
+브라우저 `http://3.36.131.116/` → Hello Cloud 페이지 (Instance ID · AZ `ap-northeast-2a` · Private IP `10.0.1.173`)
+
+![외부 접속 - Hello Cloud](docs/screenshots/7.Hello%20Cloud.png)
 
 ### 4단계. 증빙 스크린샷 (docs/screenshots/)
 
@@ -459,6 +1103,12 @@ curl.exe -i http://<퍼블릭IP>/health
 | `cleanup-billing.png` | Billing 화면 (루트 계정) |
 
 ### 5단계. 리소스 정리 (필수)
+
+> 💡 **개념 — 왜 정리하고, 왜 이 순서인가?**
+> - 클라우드는 **켜져 있는 시간만큼 과금**된다. 실행 중 EC2(Elastic Compute Cloud), EBS(Elastic Block Store) 디스크, 퍼블릭 IPv4(Internet Protocol version 4) 가 대표적. **중지(Stop)** 는 디스크 요금이 계속 나가므로 **종료(Terminate)** 해야 한다.
+> - 리소스끼리 **서로 붙잡고 있어서**(의존 관계) 붙잡는 쪽부터 지워야 삭제된다:
+>   **EC2**(SG·서브넷 사용) → **SG** → **Route Table**(서브넷 연결) → **IGW**(VPC에 부착, 먼저 *분리*) → **Subnet** → **VPC**
+> - 기본 VPC(`172.31.0.0/16`)와 그 부속(default SG, main RT, IGW, 서브넷 4개)은 AWS가 계정마다 **기본 제공**하는 것 — 과금 없음, 정리 대상 아님.
 
 ```bash
 bash infra/cleanup.sh            # CLI로 만든 경우 — 역순 삭제 + 잔존 리소스 0개 검증

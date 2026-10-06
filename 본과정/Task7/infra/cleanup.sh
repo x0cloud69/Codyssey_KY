@@ -22,7 +22,17 @@ export AWS_PAGER=""
 # shellcheck disable=SC1090
 source "$STATE_FILE"
 
-aws() { command aws "$@" | tr -d '\r'; }   # Git Bash CRLF 대응
+# aws.exe 출력을 파이프(|)로 바로 받으면, aws.exe 가 띄운 백그라운드 프로세스가 파이프를 붙잡아
+# 명령이 끝났는데도 스크립트가 멈출 수 있다 → 임시 파일로 받은 뒤 CR 제거. 입력 대기도 차단(</dev/null).
+aws() {
+  local out rc
+  out=$(mktemp)
+  command aws --cli-connect-timeout 15 --cli-read-timeout 60 "$@" </dev/null >"$out"
+  rc=$?
+  tr -d '\r' <"$out"
+  rm -f "$out"
+  return $rc
+}
 log() { printf '\033[33m[cleanup]\033[0m %s\n' "$*"; }
 run() { "$@" >/dev/null 2>&1 && log "OK   $*" || log "SKIP $* (이미 없음 또는 실패)"; }
 
