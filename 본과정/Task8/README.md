@@ -444,44 +444,42 @@ python main.py pr --base main
 **명령문**
 
 ```powershell
+Add-Content test_secret.py 'API_KEY = "sk-ant-api03-AbCdEfGhIjKlMnOpQrStUvWx"'
+Add-Content test_secret.py 'Tel = "010-9077-7097"'
+git add test_secret.py
 python main.py commit --dry-run
 python main.py commit --safe-mode --dry-run
 ```
 
 **설명**
 
-실제 과제 저장소를 건드리지 않도록 테스트용 저장소(`safe-demo`)를 따로 만들어 실행했다. 비교가 잘 보이도록 아래처럼 변경을 준비했다.
+가짜 API Key와 휴대폰 번호를 넣은 테스트 파일 `test_secret.py`를 만들고, `--dry-run`으로 API는 호출하지 않은 채 AI에게 **전송될 내용**을 비교했다.
 
-- `app_config.py`: 가짜 API Key, 이메일, 비밀번호, 휴대폰 번호 4줄 추가
-- `src/module_01.py` ~ `module_11.py`: 11개 파일에 25줄씩 추가 (총 12개 파일, diff 362줄)
-
-`--dry-run`을 함께 써서 API는 호출하지 않고, AI에게 **전송될 내용**만 비교했다.
-
-| 항목 | safe-mode 끔 | safe-mode 켬 |
+| 줄 | safe-mode 끔 | safe-mode 켬 |
 | --- | --- | --- |
-| API Key `sk-ant-api03-...` | 그대로 전송 | `[MASKED_API_KEY]` |
-| 이메일 `admin@example.com` | 그대로 전송 | `[MASKED_EMAIL]` |
-| 비밀번호 `p@ssw0rd-1234` | 그대로 전송 | `[MASKED_SECRET]` |
-| 휴대폰 `010-1234-5678` | 그대로 전송 | `[MASKED_PHONE]` |
-| 전송 파일 수 | 12개 | 10개 (2개 생략) |
-| 전송 diff 줄 수 | 362줄 | 200줄 (162줄 생략) |
+| `API_KEY` (2줄) | `sk-ant-api03-AbCd...` 그대로 | `[MASKED_API_KEY]` |
+| `Tel` | `010-9077-7097` 그대로 | `[MASKED_PHONE]` |
+| `.vscode/launch.json` 변경 | 그대로 | 그대로 (민감정보 없음) |
 
-- 마스킹 건수: 4건 (넣은 민감정보 4개가 모두 가려짐)
-- 생략된 파일/줄 수: 파일 2개, 이후 98줄 (아래 흐름 설명 참고)
-
-safe-mode를 끄면 민감정보가 그대로 외부 AI 서버로 전송된다. 켜면 가려진 상태로 전송되고, 보내는 양도 줄어 비용도 줄어든다. 대신 diff 일부가 빠지므로 AI가 변경 내용을 덜 알고 쓰게 된다.
+- safe-mode를 끄면 API Key와 전화번호가 그대로 외부 AI 서버로 전송된다. 켜면 가려진 상태로 전송된다.
+- 민감정보가 없는 `launch.json` 변경은 양쪽이 같다. safe-mode는 정해진 형태의 값만 바꾸고 나머지 diff는 건드리지 않는다.
+- 이번 diff는 200줄보다 짧아 분량 제한(파일 10개, 200줄)으로 잘린 부분은 없다.
 
 **결과 캡쳐**
 
-출력이 길어 System Prompt, 파일 목록, `src/module_*.py`의 diff는 생략 표시로 줄였다. 위쪽의 `[INFO]` 줄과 `app_config.py` 부분은 출력 그대로다.
-
 safe-mode 끔
 
-![safe-mode 끔](images/05-safe-off.png)
+![safe-mode 끔](images/05.safemode-off.png)
 
 safe-mode 켬
 
-![safe-mode 켬](images/05-safe-on.png)
+![safe-mode 켬](images/05.safemode-on.png)
+
+**확인한 한계: 형식이 다르면 가려지지 않는다**
+
+처음에는 전화번호를 `0101-9077-7097`로 잘못 입력했는데, safe-mode를 켜도 가려지지 않았다. 휴대폰 번호 패턴이 `01[016789]-?\d{3,4}-?\d{4}`, 즉 `010`처럼 **세 자리로 시작하는 번호**만 찾기 때문이다. `010-9077-7097`로 고치자 `[MASKED_PHONE]`으로 가려졌다.
+
+정규표현식은 정해 둔 모양과 똑같은 것만 찾으므로 오타가 섞인 번호, 일반 전화(`02-123-4567`), 국제 형식(`+82-10-...`)은 놓친다. 반대로 패턴을 너무 넓히면 날짜나 버전 번호까지 가려진다. 그래서 safe-mode만 믿지 말고 `--dry-run`으로 실제 전송 내용을 확인해야 한다.
 
 **프로그램 흐름**
 
@@ -491,18 +489,19 @@ safe-mode 켬
 | --- | --- | --- | --- |
 | 1 | `parse_args()` | `args.safe_mode = False` | `args.safe_mode = True` |
 | 2 | `os.environ.get("AI_API_KEY")` | 통과 (`--dry-run`) | 통과 (`--dry-run`) |
-| 3 | `collect_status()` → `run_git()` | 12개 파일 | 12개 파일 |
-| 4 | `collect_diff()` → `run_git()` | 362줄 | 362줄 |
+| 3 | `collect_status()` → `run_git()` | 같음 | 같음 |
+| 4 | `collect_diff()` → `run_git()` | 같음 | 같음 |
 | 5 | `mask_sensitive()` → `limit_diff()` | 건너뜀 | **실행** |
 | 6 | `build_user_prompt()` | 원본 diff로 조립 | 가공된 diff로 조립 |
 | 7 | `print_block()` 2회 | 출력 후 종료 | 출력 후 종료 |
 
-3, 4번에서 수집하는 양은 같다. safe-mode는 **수집한 뒤, AI에게 보내기 전에** diff를 가공하는 단계다.
+3, 4번에서 수집하는 내용은 같다. safe-mode는 **수집한 뒤, AI에게 보내기 전에** diff를 가공하는 단계다.
 
 **5-1. `mask_sensitive()` : 민감정보 가리기**
 
-- `MASK_PATTERNS`에 등록된 정규표현식을 위에서부터 하나씩 적용해, 찾은 값을 정해진 글자로 바꾼다.
-- `pattern.subn()`은 바꾼 결과와 함께 몇 건을 바꿨는지 돌려준다. 이 숫자를 모두 더한 것이 `마스킹 4건`이다.
+- `MASK_PATTERNS`에 등록된 정규표현식을 위에서부터 하나씩 diff 전체에 적용해, 찾은 값을 정해진 글자로 바꾼다.
+- `pattern.subn()`은 바꾼 결과와 함께 몇 건을 바꿨는지 돌려주고, 이 숫자를 모두 더해 `[INFO] safe-mode 적용: 마스킹 N건`으로 출력한다.
+- diff 전체에 적용하므로 새로 추가한 줄(`+`)뿐 아니라 앞뒤 문맥으로 함께 나오는 기존 줄(맨 앞이 공백인 줄)도 가려진다. 캡쳐에서 첫 번째 `API_KEY` 줄이 그 경우다.
 
 | 패턴 | 찾는 형태 | 바뀌는 글자 |
 | --- | --- | --- |
@@ -512,25 +511,17 @@ safe-mode 켬
 | 이메일 | `아이디@도메인.com` | `[MASKED_EMAIL]` |
 | 휴대폰 번호 | `010-1234-5678` 형태 | `[MASKED_PHONE]` |
 
-- 이번 실행에서 `ANTHROPIC_API_KEY` 줄은 값이 `sk-ant-`로 시작해 API Key 패턴에, `DB_PASSWORD` 줄은 이름에 `PASSWORD`가 있어 비밀값 패턴에 걸렸다.
-- 정규표현식 기반이라 정해진 형태가 아닌 민감정보(예: 이름 없이 적힌 주민번호, 사내 서버 주소)는 잡지 못한다. 그래서 `--dry-run`으로 실제 전송 내용을 확인하는 습관이 함께 필요하다.
+- 이번 실행에서 `API_KEY` 줄은 값이 `sk-ant-`로 시작해 API Key 패턴에, `Tel` 줄은 값이 `010-`으로 시작해 휴대폰 번호 패턴에 걸렸다. `Tel`이라는 이름은 판단에 쓰이지 않는다.
 
 **5-2. `limit_diff()` : 전송 분량 제한**
 
-두 단계로 자른다.
-
-1. **파일 수 제한**: diff를 `diff --git` 줄을 기준으로 파일별로 나눈 뒤 앞의 10개만 남긴다. 12개 중 2개(`module_10.py`, `module_11.py`)가 빠졌다.
-2. **줄 수 제한**: 남은 10개 파일의 diff는 298줄이었고, 이를 앞에서부터 200줄까지만 남겼다. 98줄이 빠졌다.
-
-그래서 메시지가 `파일 2개 생략, 98줄 생략`으로 나오고, 처음 362줄에서 실제로 전송된 것은 200줄이다. 잘린 사실은 diff 맨 끝에 `[... safe-mode: 파일 2개 생략, 98줄 생략]` 한 줄로 붙여 AI에게도 알린다. 그래야 AI가 diff가 전부라고 오해하지 않는다.
-
-**5-3. 결과 안내**
-
-`main()`이 두 함수의 결과를 모아 `[INFO] safe-mode 적용: 마스킹 4건, 파일 2개 생략, 98줄 생략` 한 줄로 출력한다. safe-mode를 끈 쪽에는 이 줄이 없다.
+- diff를 `diff --git` 줄 기준으로 파일별로 나눠 앞의 10개 파일만 남기고, 다시 앞에서부터 200줄까지만 남긴다.
+- 잘라낸 경우 diff 끝에 `[... safe-mode: 파일 N개 생략, N줄 생략]`을 붙여 AI에게도 일부가 빠졌다는 사실을 알린다.
+- 이번에는 diff가 짧아 잘린 부분이 없다. 커밋하지 않은 큰 변경(예: 긴 README 수정)이 함께 있으면 그 파일이 200줄을 먼저 채워, 뒤에 있는 파일은 전송 대상에서 빠질 수 있다.
 
 **실습 중 고친 점**
 
-처음 실행했을 때는 API Key 한 줄이 두 번 세어져 `마스킹 5건`으로 나왔다. API Key 패턴이 값을 `[MASKED_API_KEY]`로 바꾼 뒤, 이름에 `API_KEY`가 들어 있어 비밀값 패턴이 그 결과를 다시 `[MASKED_SECRET]`으로 바꿨기 때문이다. 비밀값 패턴이 이미 `[MASKED_`로 시작하는 값은 건너뛰도록 정규표현식에 조건(`(?!\[MASKED_)`)을 추가해, 건수가 실제 개수와 같은 4건으로 나오고 API Key도 `[MASKED_API_KEY]`로 정확히 표시되게 했다.
+테스트 중 API Key 한 줄이 두 번 세어지는 문제를 발견했다. API Key 패턴이 값을 `[MASKED_API_KEY]`로 바꾼 뒤, 이름에 `API_KEY`가 들어 있어 비밀값 패턴이 그 결과를 다시 `[MASKED_SECRET]`으로 바꿨기 때문이다. 비밀값 패턴이 이미 `[MASKED_`로 시작하는 값은 건너뛰도록 정규표현식에 조건(`(?!\[MASKED_)`)을 추가해, 건수가 실제 개수와 같게 나오고 API Key도 `[MASKED_API_KEY]`로 정확히 표시되게 했다.
 
 ### 6. temperature 변경 비교
 
@@ -543,16 +534,64 @@ python main.py commit --temperature 1.0
 
 **설명**
 
-같은 변경 사항으로 temperature만 바꿔 실행했다.
+같은 변경 사항(10개 파일, diff 162줄)을 두고 temperature만 바꿔 실행했다. 모델과 max_tokens(800)는 같고, 두 번 모두 API를 1회 호출했다.
 
-- 0.0일 때: (관찰한 내용 작성. 예: 여러 번 실행해도 문구가 거의 같다)
-- 1.0일 때: (관찰한 내용 작성. 예: 실행할 때마다 표현이 달라진다)
+| 항목 | temperature 0.0 | temperature 1.0 |
+| --- | --- | --- |
+| 제목 | `feat: Task8 safe-mode 테스트 문서 및 이미지 업데이트` | `feat: Task8 safe-mode 문서 및 테스트 이미지 업데이트` |
+| 불릿 1 | README.md에서 safe-mode 테스트 설명을 간소화하고 새 이미지 파일명으로 변경 | README.md의 safe-mode 설명을 간결하게 정리하고, 테스트 과정과 결과를 명확하게 재작성 |
+| 불릿 2 | 기존 이미지(05-safe-off.png, 05-safe-on.png) 삭제 및 새 이미지(05.safemode-*.png) 추가 | 이미지 파일명을 `05-safe-*.png`에서 `05.safemode-*.png`로 변경하고 화이트 버전 추가 |
+| 불릿 3 | test_secret.py에 테스트용 API Key와 전화번호 추가, launch.json에 Task8 디버그 설정 추가 | test_secret.py에 API Key와 전화번호 테스트 데이터 추가 및 디버그 구성 등록 |
+
+관찰한 점
+
+- **형식은 같다**: 두 결과 모두 `feat:` 제목 1줄과 불릿 3개로, 시스템 프롬프트의 규칙을 똑같이 지켰다. 형식은 temperature가 아니라 프롬프트가 정한다.
+- **표현이 달라진다**: 다룬 내용(README, 이미지, test_secret.py)은 같지만, 1.0에서는 단어 순서가 바뀌고("테스트 문서" → "문서 및 테스트 이미지") "명확하게 재작성", "화이트 버전"처럼 0.0에 없던 표현이 나왔다.
+- **0.0이 더 사실에 가깝다**: 0.0은 "삭제 및 추가"처럼 diff에 보이는 동작을 그대로 적었고, 1.0은 "재작성"처럼 해석이 섞인 표현을 썼다.
+
+각각 한 번씩만 실행한 결과라 차이를 일반화하기에는 부족하다. 같은 값으로 2~3번씩 반복 실행해 보면, 0.0은 매번 거의 같은 문구가 나오고 1.0은 실행할 때마다 달라지는 것을 더 분명히 확인할 수 있다. 커밋 메시지처럼 일관성이 중요한 글에는 낮은 값이 적합해서 기본값을 0.2로 두었다.
 
 **결과 캡쳐**
 
-![temperature 0.0](images/06-temp-0.png)
+temperature 0.0
 
-![temperature 1.0](images/06-temp-1.png)
+![temperature 0.0](images/06.temperature_0.0.png)
+
+temperature 1.0
+
+![temperature 1.0](images/06.temperature_1.0.png)
+
+**프로그램 흐름**
+
+호출 순서는 실습 2번(`commit`)과 같다. `--temperature` 값은 **1번에서 읽혀 7번 `call_ai()`의 요청 본문에 그대로 들어가는 것**이 전부이고, 나머지 단계에는 영향을 주지 않는다.
+
+| 순서 | 호출되는 함수 | temperature가 하는 일 |
+| --- | --- | --- |
+| 1 | `parse_args()` | `--temperature 0.0` → `args.temperature = 0.0` (실수로 변환, 범위 검사) |
+| 2 | `os.environ.get("AI_API_KEY")` | 영향 없음 |
+| 3 | `collect_status()` → `run_git()` | 영향 없음 (두 실행 모두 10개 파일) |
+| 4 | `collect_diff()` → `run_git()` | 영향 없음 (두 실행 모두 162줄) |
+| 5 | `mask_sensitive()`, `limit_diff()` | 건너뜀 (`--safe-mode` 없음) |
+| 6 | `build_user_prompt()` | 영향 없음 (두 실행의 프롬프트는 같다) |
+| 7 | `call_ai()` | 요청 본문의 `"temperature"` 값으로 전달 |
+| 8 | `polish_commit()` | 영향 없음 (받은 글을 같은 규칙으로 검사) |
+| 9 | `print_block()` | 영향 없음 |
+
+**1. `parse_args()` : 값 읽기와 검사**
+
+- `type=float`로 등록되어 있어 터미널에서 받은 글자 `"0.0"`, `"1.0"`이 숫자로 바뀐다. `--temperature abc`처럼 숫자가 아니면 여기서 오류가 난다.
+- 해석 뒤 `0.0 <= args.temperature <= 1.0`인지 검사한다. 범위를 벗어나면 "`--temperature`는 0.0~1.0 사이여야 합니다"를 출력하고 API를 호출하기 전에 끝낸다.
+- 옵션을 생략하면 기본값 `DEFAULT_TEMPERATURE = 0.2`가 들어간다.
+
+**7. `call_ai()` : 요청에 담아 전송**
+
+- 요청 본문(`payload`)에 `"temperature": temperature`로 들어간다. 이 숫자를 실제로 해석하는 곳은 프로그램이 아니라 **AI 서버**다.
+- 호출 직전에 출력되는 `[INFO] AI API 요청 중... (model=..., temperature=0.0, max_tokens=800)` 줄로 어떤 값이 전달됐는지 확인할 수 있다.
+- AI는 글을 한 단어씩 이어 쓰면서 매번 다음에 올 후보 단어들 중 하나를 고른다. temperature는 이때 얼마나 과감하게 고를지를 정한다.
+  - **낮을수록(0.0)**: 가장 가능성이 높은 단어를 거의 항상 고른다. 결과가 안정적이고 반복 실행해도 비슷하다.
+  - **높을수록(1.0)**: 가능성이 낮은 단어도 자주 고른다. 표현이 다양해지는 대신 실행마다 결과가 달라지고, 사실과 어긋난 표현이 섞일 가능성도 커진다.
+
+같은 입력에 같은 프롬프트를 넣었는데도 두 결과의 문구가 달라진 것은, 프로그램 안이 아니라 7번에서 서버로 넘어간 이 숫자 하나 때문이다.
 
 ### 7. max-tokens 변경 비교
 
@@ -564,13 +603,76 @@ python main.py pr --max-tokens 50
 
 **설명**
 
-응답 길이를 50 토큰으로 제한했다. 답이 중간에 잘려 경고가 출력되고, 빠진 섹션은 후처리에서 `- (작성 필요)`로 채워지는 것을 확인했다.
+AI가 쓸 수 있는 응답 길이를 기본값 800 토큰에서 50 토큰으로 줄여 PR 초안을 만들었다. 토큰은 AI가 글을 세는 단위로, 한국어는 대략 한 글자에서 몇 글자가 1토큰이 된다.
 
-- 관찰한 내용: (작성)
+- 수집 결과: 브랜치 `task8`, 14개 파일 변경, diff 232줄
+- 호출 조건: model=claude-haiku-4-5, temperature=0.2, **max_tokens=50**, 호출 횟수 1회
+
+관찰한 점
+
+| 단계 | 출력 | 의미 |
+| --- | --- | --- |
+| AI 응답 직후 | `[WARN] max_tokens에 도달해 응답이 잘렸을 수 있습니다.` | AI가 글을 다 쓰기 전에 50토큰 한도에서 멈췄다 |
+| 후처리 | `[WARN] PR 본문에 'What' 섹션이 없어 추가했습니다.` | Why를 쓰는 도중에 끊겨 What이 없었다 |
+| 후처리 | `[WARN] PR 본문에 'How to Test' 섹션이 없어 추가했습니다.` | How to Test도 없었다 |
+| 최종 결과 | Why 불릿이 `safe-mode 기능의 테스트 결과를`에서 끊김 | 문장이 중간에 잘린 채 남았다 |
+| 최종 결과 | What, How to Test에 `- (작성 필요)` | 프로그램이 빈 섹션을 채워 템플릿 형식만 맞췄다 |
+
+- 제목(`docs: Task8 safe-mode 테스트 문서 및 이미지 업데이트`)은 응답 맨 앞에 있어 온전히 받았다.
+- 프로그램이 멈추거나 오류가 나지 않고, 잘린 결과를 받아 경고와 함께 Why / What / How to Test 구조는 지켜서 출력했다.
+- 다만 내용은 쓸 수 없는 수준이다. max_tokens는 비용(출력 토큰)과 응답 시간을 줄여 주지만, 너무 작으면 결과 자체가 망가진다. PR 본문처럼 섹션이 여러 개인 글은 충분한 값이 필요해 기본값을 800으로 두었다.
 
 **결과 캡쳐**
 
-![max-tokens 50 결과](images/07-max-tokens.png)
+![max-tokens 50 결과](images/07.max-token.png)
+
+**프로그램 흐름**
+
+호출 순서는 실습 3번(`pr`)과 같다. max_tokens가 작아서 **7번 `call_ai()`에서 경고가 나고, 8번 `polish_pr()`에서 빠진 섹션을 채우는 분기가 실제로 실행된 것**이 차이다. 지금까지의 실습에서 후처리 경고가 처음으로 나온 경우다.
+
+| 순서 | 호출되는 함수 | 이번 실행에서 |
+| --- | --- | --- |
+| 1 | `parse_args()` | `args.max_tokens = 50` (정수로 변환, 1 이상인지 검사) |
+| 2 | `os.environ.get("AI_API_KEY")` | 키가 있어 통과 |
+| 3 | `collect_status()` → `run_git()` | 브랜치 `task8`, 14개 파일 |
+| 4 | `collect_diff()` → `run_git()` | 232줄 |
+| 5 | `mask_sensitive()`, `limit_diff()` | 건너뜀 (`--safe-mode` 없음) |
+| 6 | `build_user_prompt()` | 프롬프트 조립 (max_tokens와 무관) |
+| 7 | `call_ai()` | 요청에 `max_tokens: 50` 전달, 응답의 `stop_reason`이 `max_tokens` → **경고 출력** |
+| 8 | `polish_pr()` → `strip_code_fence()`, `clean_title()` | What, How to Test가 없어 **섹션 추가 + 경고 2개** |
+| 9 | `print_block()` 2회 | 보정된 PR 제목과 본문 출력 |
+
+**1. `parse_args()` : 값 읽기와 검사**
+
+- `type=int`로 등록되어 있어 `"50"`이 정수 50으로 바뀐다. `--max-tokens 50.5`나 `abc`처럼 정수가 아니면 여기서 오류가 난다.
+- 해석 뒤 `args.max_tokens < 1`인지 검사해 0이나 음수를 막는다.
+
+**7. `call_ai()` : 한도 전달과 잘림 감지**
+
+- 요청 본문에 `"max_tokens": 50`으로 들어간다. temperature와 마찬가지로 이 숫자를 적용하는 곳은 **AI 서버**다. 서버는 50토큰을 쓰면 문장 중간이라도 멈춘다.
+- 서버는 응답과 함께 멈춘 이유(`stop_reason`)를 알려 준다. 정상적으로 다 썼으면 `end_turn`, 한도에 걸려 멈췄으면 `max_tokens`다.
+- 코드는 이 값을 확인해 `max_tokens`이면 경고를 출력한다. 화면의 첫 번째 `[WARN]`이 여기서 나왔다.
+
+```python
+if data.get("stop_reason") == "max_tokens":
+    warn("max_tokens에 도달해 응답이 잘렸을 수 있습니다. --max-tokens 값을 늘려 보세요.")
+```
+
+- 잘렸어도 오류로 처리하지 않고, 받은 만큼의 글을 다음 단계로 넘긴다. 비용을 이미 쓴 응답을 버리지 않기 위해서다.
+
+**8. `polish_pr()` : 빠진 섹션 채우기**
+
+AI가 받은 글은 `TITLE:` 줄과 `## Why` 아래 불릿 하나가 중간에서 끊긴 상태였다. `polish_pr()`이 이를 검사한 순서는 다음과 같다.
+
+1. `TITLE:` 줄을 찾아 제목으로 분리한다. 제목은 온전했고 80자 이내라 그대로 쓴다.
+2. 본문을 `##` 헤더 기준으로 나눈다. `Why` 섹션 하나만 나온다.
+3. Why, What, How to Test 순서로 확인한다.
+   - **Why**: 섹션이 있고 `- `로 시작하는 불릿이 있어 그대로 둔다. 문장이 끊긴 것은 형식 검사로는 알 수 없어 그대로 남는다.
+   - **What**: 섹션이 없어 `- (작성 필요)`를 넣어 추가하고 경고를 출력한다.
+   - **How to Test**: 같은 방법으로 추가하고 경고를 출력한다.
+4. 세 섹션을 정해진 순서로 다시 조립한다.
+
+이 후처리 덕분에 출력은 항상 과제의 PR 템플릿 규칙(세 섹션 헤더 + 섹션별 불릿 1개 이상)을 만족한다. 하지만 `(작성 필요)`라는 표시와 경고로 **사람이 직접 채워야 할 곳을 알려 줄 뿐, 내용을 만들어 내지는 않는다.** 이럴 때는 `--max-tokens` 값을 늘려 다시 실행하는 것이 맞는 대응이다.
 
 ### 8. 오류 상황: API Key 미설정
 
@@ -581,13 +683,61 @@ Remove-Item Env:AI_API_KEY
 python main.py commit
 ```
 
+첫 줄은 현재 PowerShell 창에 설정된 `AI_API_KEY`를 지우는 명령이다. 새 PowerShell 창을 열어 키를 설정하지 않은 상태로 실행해도 같은 결과가 나온다.
+
 **설명**
 
-환경변수가 없으면 API를 호출하지 않고 설정 방법을 안내한 뒤 종료한다.
+API Key 환경변수가 없는 상태에서 `commit`을 실행했다.
+
+- `[ERROR] AI_API_KEY 환경변수가 설정되지 않았습니다.`로 원인을 알려 준다.
+- 바로 아래에 설정 방법을 두 가지(macOS/Linux의 `export`, Windows PowerShell의 `$env:`) 보여 준다. 사용자가 이 줄을 복사해 키만 바꿔 넣으면 된다.
+- `[INFO] Git status 수집 완료` 같은 줄이 하나도 없다. Git 수집이나 AI 호출 전에, 프로그램의 거의 첫 단계에서 멈췄다는 뜻이다.
+- AI API를 호출하지 않았으므로 비용이 들지 않는다.
+- 종료 코드 1로 끝나 "실패"를 알린다. 정상 종료(0)와 구분되므로, 다른 스크립트에서 이 프로그램을 부를 때 실패 여부를 판단할 수 있다.
+
+키를 코드에 적지 않고 환경변수로만 읽는다는 과제 요구사항과, 키가 없을 때 원인을 알려 준다는 예외 처리 요구사항을 함께 확인한 실습이다.
 
 **결과 캡쳐**
 
-![API Key 미설정](images/08-no-key.png)
+![API Key 미설정](images/08.API%20Key%20미설정.png)
+
+**프로그램 흐름**
+
+`main()`이 함수 두 개만 거치고 끝난다. 이후 단계는 모두 실행되지 않는다.
+
+| 순서 | 호출되는 함수 | 이번 실행에서 |
+| --- | --- | --- |
+| 1 | `parse_args()` | `args.command = "commit"`, `args.dry_run = False` |
+| 2 | `os.environ.get("AI_API_KEY")` | 빈 값 → **오류 출력 후 종료 (코드 1)** |
+| - | `collect_status()` 이후 전부 | 도달하지 않음 |
+
+**1. `parse_args()` : 입력 해석**
+
+- 명령과 옵션을 정상적으로 해석한다. 이 단계는 키와 무관해서 통과한다.
+
+**2. 키 확인 : 오류 처리와 종료**
+
+```python
+api_key = os.environ.get(API_KEY_ENV, "").strip()
+if not api_key and not args.dry_run:
+    error(f"{API_KEY_ENV} 환경변수가 설정되지 않았습니다.")
+    print(f'## 예) export {API_KEY_ENV}="YOUR_KEY"')
+    print(f'## 예) (PowerShell) $env:{API_KEY_ENV}="YOUR_KEY"')
+    return 1
+```
+
+- `os.environ.get(API_KEY_ENV, "")`: 환경변수 `AI_API_KEY`를 읽는다. 없으면 오류를 내지 않고 두 번째 값인 빈 문자열 `""`을 돌려준다.
+- `.strip()`: 앞뒤 공백을 지운다. 실수로 공백만 넣은 경우도 "없음"으로 처리하기 위해서다.
+- `if not api_key and not args.dry_run`: 키가 비어 있고, **동시에** `--dry-run`이 아닐 때만 막는다. `--dry-run`은 API를 호출하지 않으므로 키가 없어도 실행할 수 있게 둔 것이다.
+- `error(...)`: 앞에 `[ERROR]`를 붙여 출력하는 함수다. 화면의 첫 줄이 여기서 나온다.
+- `print(...)` 두 줄: 설정 방법 예시를 출력한다. 문구 안의 `{API_KEY_ENV}` 자리에 실제 변수 이름 `AI_API_KEY`가 들어간다.
+- `return 1`: `main()`을 여기서 끝낸다. 파일 맨 아래의 `sys.exit(main())`이 이 값을 받아 종료 코드 1로 프로그램을 끝낸다.
+
+**왜 이 위치에서 검사하나**
+
+키 검사를 Git 수집보다 먼저 하는 것은, 어차피 AI를 호출할 수 없는 상황에서 git 명령을 실행하고 diff를 모으는 일을 하지 않기 위해서다. 실패할 것이 확실한 조건은 가능한 한 앞에서 확인하고 끝내는 것이 사용자에게도 빠르고, 불필요한 작업도 줄인다.
+
+종료 코드는 PowerShell에서 실행 직후 `$LASTEXITCODE`를 입력하면 확인할 수 있다.
 
 ### 9. 오류 상황: 잘못된 API Key
 
