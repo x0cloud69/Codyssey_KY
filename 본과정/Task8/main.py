@@ -113,15 +113,41 @@ def error(message):
 # ---------------------------------------------------------------- Git 수집
 
 def run_git(args):
+    """git 명령을 실행하고, 출력 결과를 문자열로 돌려준다.
+
+    사람이 터미널에 git 명령을 치고 눈으로 읽는 일을 프로그램이 대신한다.
+    예) run_git(["status", "--porcelain", "-b"])        -> 터미널의 `git -c core.quotepath=false status --porcelain -b` 와 같다.
+    """
     try:
+        # subprocess.run: 다른 프로그램을 실행하고 끝날 때까지 기다린다.
         result = subprocess.run(
+            # 실행할 명령을 단어별로 나눈 리스트.
+            # - 한 문자열이 아니라 리스트로 넘기면 각 조각이 글자 그대로 전달되어,
+            #   값에 공백/특수문자가 있어도 다른 명령이 끼어들 수 없다(안전).
+            # - "-c 설정이름=값": git 설정을 저장하지 않고 이번 실행에만 적용한다.
+            #   (git config 로 저장하면 사용자 PC 설정이 영구히 바뀌므로 쓰지 않는다)
+            # - core.quotepath: 한글 등 비영어 파일명을 숫자 코드로 바꿀지 정한다.
+            #     true (기본값) -> 바꾼다        "\353\263\270\352\263\274\354\240\225/Task8/README.md"
+            #     false         -> 바꾸지 않는다  본과정/Task8/README.md
+            #   "변환 기능을 끈다"는 뜻이라, 한글을 그대로 보려면 false 로 준다.
+            # - *args: 넘겨받은 리스트를 풀어서 끼워 넣는다.
+            #   ["status", "-b"] -> "git", "-c", "...", "status", "-b"
             ["git", "-c", "core.quotepath=false", *args],
+            # 출력을 화면에 찍지 않고 붙잡아서 result에 담는다.
             capture_output=True,
+            # git이 내보낸 바이트를 UTF-8 문자열로 해석한다.
+            # (지정하지 않으면 Windows에서는 cp949로 읽어 한글이 깨질 수 있다)
             encoding="utf-8",
+            # 해석할 수 없는 바이트는 오류 대신 대체 문자로 바꾸고 계속 진행한다.
             errors="replace",
         )
     except FileNotFoundError:
+        # git 프로그램 자체가 설치되어 있지 않은 경우
         raise GitError("git 명령을 찾을 수 없습니다. Git 설치 여부를 확인하세요.")
+    # result에 담기는 것
+    # - result.returncode: 종료 코드 (0이면 성공, 그 외는 실패)
+    # - result.stdout    : 정상 출력 글자
+    # - result.stderr    : 오류 메시지 (예: "fatal: not a git repository")
     if result.returncode != 0:
         raise GitError(result.stderr.strip() or "git 명령 실행에 실패했습니다.")
     return result.stdout
@@ -129,6 +155,16 @@ def run_git(args):
 
 def collect_status():
     """git status 결과에서 (브랜치 이름, 커밋 존재 여부, 변경 파일 줄 목록)을 얻는다."""
+    # --porcelain: 사람이 아니라 "프로그램"이 읽기 쉬운 고정 형식으로 출력한다.
+    #   일반 git status 는 긴 안내 문장이고 버전/언어에 따라 문구가 바뀌지만,
+    #   --porcelain 은 항상 한 줄에 "상태코드 파일경로" 하나씩이라 줄 단위로 해석할 수 있다.
+    #   상태코드 예)  " M" 수정(add 전)   "M " 수정(add 후)   "A " 새 파일 add
+    #                 "D " 삭제           "??" Git이 아직 모르는 새 파일
+    # -b (--branch): 첫 줄에 브랜치 정보를 추가한다. ("## main...origin/main")
+    #
+    # 두 옵션의 역할 구분
+    #   --porcelain               -> 출력 "형식"(전체 틀)을 고정된 모양으로
+    #   -c core.quotepath=false   -> 그 안의 "한글 파일 이름"을 숫자 코드로 바꾸지 않고 그대로
     lines = run_git(["status", "--porcelain", "-b"]).splitlines()
     header = lines[0][3:] if lines and lines[0].startswith("## ") else ""
     has_commits = not header.startswith("No commits yet on ")
@@ -386,6 +422,10 @@ def main(argv=None):
         return 1
 
     target = "커밋 메시지를" if args.command == "commit" else "PR 초안을"
+    if args.base and not diff.strip():
+        info(f"'{args.base}' 브랜치와 현재 브랜치({branch}) 사이에 커밋된 차이가 없습니다. PR 초안을 생성하지 않고 종료합니다.")
+        print("## 작업 브랜치에서 변경을 커밋한 뒤 다시 실행하세요.")
+        return 0
     if not status_lines and not diff.strip():
         info(f"변경 사항이 없습니다. {target} 생성하지 않고 종료합니다.")
         return 0

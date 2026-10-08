@@ -1,4 +1,4 @@
-# AI 기반 Git 커밋/PR 자동 생성기
+# AI 기반 Git 커밋/PR 자동 생성기 (실습)
 
 `git status`, `git diff` 결과를 AI API(Anthropic Claude)에 넘겨 **커밋 메시지**와 **PR 초안**을 만들어 주는 Python CLI 도구입니다. 결과는 터미널에 출력만 하며, 실제 커밋·push·PR 생성은 하지 않습니다.
 
@@ -143,3 +143,379 @@ AI 응답은 재호출 없이 후처리로 규칙에 맞춥니다. 고친 부분
 ### 결과 검토
 
 생성된 문구는 초안입니다. 반드시 내용을 검토하고 필요한 부분을 고친 뒤 사용하세요.
+
+---
+
+## 실습 기록
+
+직접 실행해 본 결과입니다. 캡쳐 이미지는 `images/` 폴더에 아래 파일 이름으로 저장하면 자동으로 표시됩니다.
+
+- 실습 일자: (작성)
+- 실행 환경: Windows PowerShell, Python (버전 작성)
+- 사용 모델: claude-haiku-4-5
+
+### 1. 전송 내용 미리 보기 (dry-run)
+
+**명령문**
+
+```powershell
+python main.py commit --dry-run
+```
+
+**설명**
+
+API를 호출하지 않고 AI에게 전달될 시스템 프롬프트와 사용자 프롬프트(브랜치, git status, git diff)를 확인했다. 비용 없이 입력 내용을 점검할 수 있다.
+
+**결과 캡쳐**
+
+![dry-run 결과](images/01-dry-run.png)
+
+**프로그램 흐름**
+
+`main()` 함수가 아래 순서로 함수를 호출한다. `--dry-run`이라 6번까지만 실행하고 끝난다.
+
+| 순서 | 호출되는 함수 | 이번 실행에서 |
+| --- | --- | --- |
+| 1 | `parse_args()` | 실행 |
+| 2 | `os.environ.get("AI_API_KEY")` | 값은 읽지만 검사는 통과 (`--dry-run`) |
+| 3 | `collect_status()` → `run_git()` | 실행 |
+| 4 | `collect_diff()` → `run_git()` | 실행 |
+| 5 | `mask_sensitive()`, `limit_diff()` | 건너뜀 (`--safe-mode` 없음) |
+| 6 | `build_user_prompt()` | 실행 |
+| 7 | `print_block()` 2회 | 프롬프트를 출력하고 종료 |
+| - | `call_ai()`, `polish_commit()` | 도달하지 않음 |
+
+**1. `parse_args()` : 입력 해석**
+
+- `argparse`로 받을 수 있는 명령과 옵션의 규칙을 등록한 뒤, 터미널에 입력한 `commit --dry-run`을 그 규칙에 맞춰 해석한다.
+- 결과로 `args.command = "commit"`, `args.dry_run = True`가 만들어지고, 생략한 옵션에는 기본값(`model = claude-haiku-4-5`, `temperature = 0.2`, `max_tokens = 800`)이 들어간다.
+- 해석이 끝나면 값의 범위와 조합을 추가로 검사한다. `--temperature`가 0.0~1.0을 벗어나거나, `--base`를 `commit`과 함께 쓰면 여기서 오류를 내고 끝난다.
+
+**2. `os.environ.get("AI_API_KEY")` : API Key 확인**
+
+- 환경변수에서 키를 읽는다. 키를 코드에 적지 않기 위한 방식이다.
+- 키가 없으면 설정 방법을 안내하고 종료하지만, `--dry-run`일 때는 API를 호출하지 않으므로 키가 없어도 통과시킨다.
+
+**3. `collect_status()` : 변경 파일 목록과 브랜치 수집 합니다**
+
+- 내부에서 `run_git(["status", "--porcelain", "-b"])`를 호출한다.
+- `run_git()`은 `subprocess.run`으로 git 명령을 실행하고, 화면에 찍힐 출력을 붙잡아 문자열로 돌려주는 공통 함수다. git이 실패하면(저장소가 아닌 폴더 등) 오류 메시지를 담아 예외를 낸다.
+- 돌려받은 출력의 첫 줄(`## main...origin/main`)에서 브랜치 이름을 뽑고, 나머지 줄을 변경 파일 목록으로 쓴다.
+- 이번 실행 결과: 브랜치 `main`, 변경 파일 3개.
+
+**4. `collect_diff()` : 변경 내용 수집**
+
+- 내부에서 `run_git(["diff", "HEAD"])`를 호출해 마지막 커밋 이후 바뀐 내용을 가져온다.
+- 커밋이 하나도 없는 저장소라면 `git diff --cached`와 `git diff`를 합쳐서 쓰고, `--base`가 지정되면 `git diff <base>...HEAD`를 쓴다.
+- 이번 실행 결과: 264줄. 여기까지 끝나면 `[INFO] Git status 수집 완료`, `[INFO] Git diff 수집 완료` 두 줄이 출력된다.
+- 변경 파일도 없고 diff도 비어 있으면 "변경 사항이 없습니다"를 출력하고 여기서 끝난다.
+
+**5. `mask_sensitive()`, `limit_diff()` : 민감정보 처리 (이번에는 건너뜀)**
+
+- `--safe-mode`를 붙였을 때만 실행된다.
+- `mask_sensitive()`는 정규표현식으로 API Key, 토큰, 이메일, 전화번호 형태를 찾아 `[MASKED_...]`로 바꾸고 몇 건을 바꿨는지 센다.
+- `limit_diff()`는 diff를 파일 단위로 나눠 앞의 10개 파일, 200줄까지만 남긴다.
+
+**6. `build_user_prompt()` : 프롬프트 조립**
+
+- 3, 4번에서 모은 브랜치 이름, 변경 파일 목록, diff에 `[현재 브랜치]`, `[git status]`, `[git diff]` 제목을 붙여 하나의 글로 묶는다. 이것이 사용자 프롬프트다.
+- 시스템 프롬프트는 명령에 따라 고른다. `commit`이므로 커밋 메시지의 형식과 규칙을 적어 둔 `COMMIT_SYSTEM_PROMPT`가 선택된다.
+
+**7. `print_block()` : 프롬프트 출력 후 종료**
+
+- `--dry-run`이므로 "API를 호출하지 않습니다. (AI API 호출 횟수: 0회)"를 출력한다.
+- `print_block("System Prompt", ...)`, `print_block("User Prompt", ...)`를 차례로 호출한다. 이 함수는 `--- 제목 ---`, 내용, 구분선 순서로 출력한다.
+- `return 0`으로 프로그램이 끝나고, 그 아래에 있는 `call_ai()`는 실행되지 않는다.
+
+### 2. 커밋 메시지 생성
+
+**명령문**
+
+```powershell
+python main.py commit
+```
+
+**설명**
+
+git status와 git diff를 수집해 AI API를 1회 호출하고, 제목 1줄과 본문 불릿으로 된 커밋 메시지를 받았다.
+
+- 수집 결과: 4개 파일 변경, diff 323줄
+- 호출 조건: model=claude-haiku-4-5, temperature=0.2, max_tokens=800, 호출 횟수 1회
+- 생성된 제목: `chore: Task8 실습 기록 및 디버그 설정 추가` (50자 이내)
+- 본문: 불릿 3개에 변경 파일 3개(`.vscode/launch.json`, `README.md`, `main.py`)가 각각 언급됨
+
+**결과 캡쳐**
+
+![커밋 메시지 생성 결과](images/02-commit.png)
+
+**프로그램 흐름**
+
+6번까지는 실습 1번과 같고, `--dry-run`이 없으므로 7~9번이 이어서 실행된다.
+
+| 순서 | 호출되는 함수 | 이번 실행에서 |
+| --- | --- | --- |
+| 1 | `parse_args()` | `args.command = "commit"`, 옵션은 모두 기본값 |
+| 2 | `os.environ.get("AI_API_KEY")` | 키가 있어 통과 (없으면 여기서 종료) |
+| 3 | `collect_status()` → `run_git()` | 브랜치 `main`, 변경 파일 4개 |
+| 4 | `collect_diff()` → `run_git()` | diff 323줄 |
+| 5 | `mask_sensitive()`, `limit_diff()` | 건너뜀 (`--safe-mode` 없음) |
+| 6 | `build_user_prompt()` | 프롬프트 조립 |
+| 7 | `call_ai()` | AI API 1회 호출 |
+| 8 | `polish_commit()` → `strip_code_fence()`, `clean_title()` | 형식 검증과 후처리 |
+| 9 | `print_block()` | 커밋 메시지 출력 |
+
+1~6번의 자세한 역할은 실습 1번의 설명과 같다. 달라지는 점은 2번에서 **키가 반드시 있어야** 한다는 것이다. 아래는 새로 실행되는 7~9번이다.
+
+**7. `call_ai()` : AI API 호출**
+
+호출 직전에 `[INFO] AI API 요청 중... (model=..., temperature=..., max_tokens=...)`가 출력된다. 함수 안에서는 세 가지 일을 한다.
+
+- **요청 구성**: 모델, `max_tokens`, `temperature`, 시스템 프롬프트, 사용자 프롬프트를 담은 본문(JSON)을 만든다. 헤더에는 API Key(`x-api-key`), API 버전(`anthropic-version`), 본문 형식(`content-type`)을 넣고, `https://api.anthropic.com/v1/messages`로 보낼 POST 요청을 준비한다.
+- **전송과 예외 대응**: `urllib.request.urlopen`으로 보내고 최대 60초를 기다린다. 실패는 종류별로 나눠 잡는다. 서버가 오류 코드를 준 경우(`HTTPError`)는 `describe_http_error()`가 401(인증 실패), 404(모델명 오류), 429(요청 한도 초과) 등을 사람이 읽을 문장으로 바꾼다. 서버에 닿지 못한 경우(`URLError`)와 시간 초과(`TimeoutError`)도 따로 처리한다. 어느 경우든 `[ERROR] AI API 호출에 실패했습니다: 원인`을 출력하고 종료한다.
+- **응답 처리**: 받은 JSON의 `content` 안에서 글자(`text`) 부분만 꺼내 돌려준다. `stop_reason`이 `max_tokens`이면 답이 중간에 잘린 것이므로 경고를 출력한다.
+
+호출이 끝나면 `[INFO] AI API 호출 횟수: 1회`가 출력된다.
+
+**8. `polish_commit()` : 형식 검증과 후처리**
+
+AI가 규칙을 항상 지키는 것은 아니므로, 받은 글을 검사하고 어긴 부분을 고친다. 다시 호출하지 않고 프로그램이 직접 고치기 때문에 API 호출은 1회로 끝난다.
+
+- `strip_code_fence()`: AI가 답을 코드 블록 기호로 감싼 경우 그 줄을 지운다.
+- `clean_title()`: 첫 줄을 제목으로 보고 앞뒤의 따옴표, `#` 같은 군더더기를 뗀다. 72자를 넘으면 잘라내고 `[WARN]`으로 알린다.
+- 제목이 권장 길이인 50자를 넘으면 경고를 출력한다.
+- 제목과 본문 사이를 빈 줄 하나로 맞춰 최종 메시지를 만든다.
+
+이번 실행에서는 제목이 50자 이내였고 고칠 부분이 없어 경고가 출력되지 않았다.
+
+**9. `print_block()` : 결과 출력**
+
+- `[DONE] 커밋 메시지 생성 완료`를 출력한다.
+- `print_block("Commit Message", ...)`로 `--- Commit Message ---`, 메시지 내용, 구분선을 출력한다. 구분선은 사용자가 어디부터 어디까지 복사하면 되는지 알 수 있게 하기 위한 것이다.
+- 마지막으로 "AI가 만든 초안입니다. 내용을 검토한 뒤 적용하세요."를 출력하고 종료한다.
+
+### 3. PR 초안 생성
+
+**명령문**
+
+```powershell
+python main.py pr
+```
+
+**설명**
+
+git status와 git diff를 수집해 AI API를 1회 호출하고, PR 제목 1줄과 Why / What / How to Test 세 섹션으로 된 본문을 받았다.
+
+- 수집 결과: 브랜치 `main`, 4개 파일 변경, diff 430줄
+- 호출 조건: model=claude-haiku-4-5, temperature=0.2, max_tokens=800, 호출 횟수 1회
+- 생성된 제목: `docs: Task8 실습 기록 및 디버그 설정 추가` (80자 이내)
+- 본문: Why / What / How to Test 세 섹션이 모두 있고 각 섹션에 불릿이 1개 이상 들어 있음
+
+**결과 캡쳐**
+
+![PR 초안 생성 결과](images/03-pr.png)
+
+**프로그램 흐름**
+
+호출 순서는 실습 2번(`commit`)과 같고, `pr` 명령이라 세 곳이 달라진다. 시스템 프롬프트가 PR용으로 바뀌고, 후처리 함수가 `polish_pr()`이며, 출력이 제목과 본문 두 구획으로 나뉜다.
+
+| 순서 | 호출되는 함수 | 이번 실행에서 |
+| --- | --- | --- |
+| 1 | `parse_args()` | `args.command = "pr"`, 옵션은 모두 기본값 |
+| 2 | `os.environ.get("AI_API_KEY")` | 키가 있어 통과 |
+| 3 | `collect_status()` → `run_git()` | 브랜치 `main`, 변경 파일 4개 |
+| 4 | `collect_diff()` → `run_git()` | `--base`가 없어 `git diff HEAD` 사용, 430줄 |
+| 5 | `mask_sensitive()`, `limit_diff()` | 건너뜀 (`--safe-mode` 없음) |
+| 6 | `build_user_prompt()` | 프롬프트 조립, 시스템 프롬프트는 `PR_SYSTEM_PROMPT` |
+| 7 | `call_ai()` | AI API 1회 호출 |
+| 8 | `polish_pr()` → `strip_code_fence()`, `clean_title()` | 제목 분리, 섹션 검증과 후처리 |
+| 9 | `print_block()` 2회 | PR 제목과 PR 본문을 각각 출력 |
+
+1~5번과 7번의 역할은 실습 1, 2번의 설명과 같다. 아래는 `pr` 명령에서 달라지는 부분이다.
+
+**3~4. 수집 결과 출력에 브랜치가 추가됨**
+
+- `pr` 명령일 때만 `[INFO] 현재 브랜치: main`을 먼저 출력한다. PR은 브랜치 단위로 만들기 때문에 어느 브랜치의 변경인지 보여 주는 것이다.
+- 브랜치 이름은 `collect_status()`가 `git status --porcelain -b` 출력의 첫 줄에서 뽑아 둔 값이다.
+- `--base main`처럼 기준 브랜치를 주면 `collect_diff()`가 `git diff main...HEAD`를 실행해 두 브랜치의 차이를 가져온다. 이번에는 주지 않았으므로 커밋하지 않은 변경(`git diff HEAD`)을 썼다.
+
+**6. `build_user_prompt()` : PR용 프롬프트 선택**
+
+- 사용자 프롬프트(브랜치, git status, git diff)를 조립하는 방식은 `commit`과 같다.
+- 시스템 프롬프트는 `PR_SYSTEM_PROMPT`가 선택된다. 첫 줄을 `TITLE: <type>: <요약>` 형식으로 쓰고, 이어서 `## Why`, `## What`, `## How to Test` 세 섹션을 반드시 넣고, 각 섹션에 불릿을 1개 이상 쓰라는 규칙이 들어 있다.
+- 같은 입력이라도 이 지시문이 달라서 커밋 메시지가 아닌 PR 양식의 답이 나온다.
+
+**8. `polish_pr()` : 제목 분리와 섹션 검증**
+
+AI의 답 하나에서 제목과 본문을 나누고, 본문이 템플릿 규칙을 지켰는지 검사한다.
+
+- `strip_code_fence()`로 코드 블록 기호가 있는 줄을 지운다.
+- `TITLE:`로 시작하는 줄을 찾아 제목으로 삼는다. 없으면 첫 줄을 제목으로 본다.
+- `clean_title()`로 제목 앞의 `TITLE:`과 따옴표를 떼고, 80자를 넘으면 잘라낸 뒤 `[WARN]`으로 알린다.
+- 제목 아래의 본문을 `##` 헤더 기준으로 섹션별로 나눈다.
+- Why, What, How to Test 순서로 하나씩 확인한다.
+  - 섹션이 없으면 새로 추가하고 `- (작성 필요)`를 넣은 뒤 경고를 출력한다.
+  - 섹션은 있는데 불릿이 없으면 각 줄 앞에 `- `를 붙여 불릿 형식으로 바꾸고 경고를 출력한다.
+- 세 섹션을 정해진 순서로 다시 조립한다. AI가 추가로 쓴 다른 섹션이 있으면 뒤에 붙인다.
+
+이번 실행에서는 제목이 80자 이내였고 세 섹션과 불릿이 모두 있어 경고가 출력되지 않았다.
+
+**9. `print_block()` : 제목과 본문을 나눠 출력**
+
+- `[DONE] PR 초안 생성 완료`를 출력한다.
+- `print_block("PR Title", ...)`로 제목을, `print_block("PR Body", ...)`로 본문을 각각 구분선으로 감싸 출력한다. GitHub의 PR 작성 화면이 제목 칸과 본문 칸으로 나뉘어 있어, 따로 복사하기 쉽게 한 것이다.
+- 마지막으로 "AI가 만든 초안입니다. 내용을 검토한 뒤 적용하세요."를 출력하고 종료한다.
+
+### 4. 브랜치 기준 PR 초안 생성 (--base)
+
+**명령문**
+
+```powershell
+git checkout -b feature/task8
+git add .
+git commit -m "(2번에서 생성한 커밋 메시지)"
+python main.py pr --base main
+```
+
+**설명**
+
+작업 브랜치에서 커밋한 뒤 `main` 브랜치와의 차이(`git diff main...HEAD`)를 기준으로 PR 초안을 만들었다. `main` 브랜치에서 그대로 실행하면 차이가 없어 API를 호출하지 않고 종료한다.
+
+**결과 캡쳐**
+
+![--base 실행 결과](images/04-pr-base.png)
+
+### 5. safe-mode 켜기/끄기 비교
+
+**명령문**
+
+```powershell
+python main.py commit --dry-run
+python main.py commit --safe-mode --dry-run
+```
+
+**설명**
+
+테스트용으로 이메일과 API Key 형태의 문자열을 넣은 뒤 실행했다. safe-mode를 켜면 해당 값이 `[MASKED_EMAIL]`, `[MASKED_API_KEY]`로 바뀌고, diff가 10개 파일 · 200줄로 제한되는 것을 확인했다.
+
+- 마스킹 건수: (작성)
+- 생략된 파일/줄 수: (작성)
+
+**결과 캡쳐**
+
+safe-mode 끔
+
+![safe-mode 끔](images/05-safe-off.png)
+
+safe-mode 켬
+
+![safe-mode 켬](images/05-safe-on.png)
+
+### 6. temperature 변경 비교
+
+**명령문**
+
+```powershell
+python main.py commit --temperature 0.0
+python main.py commit --temperature 1.0
+```
+
+**설명**
+
+같은 변경 사항으로 temperature만 바꿔 실행했다.
+
+- 0.0일 때: (관찰한 내용 작성. 예: 여러 번 실행해도 문구가 거의 같다)
+- 1.0일 때: (관찰한 내용 작성. 예: 실행할 때마다 표현이 달라진다)
+
+**결과 캡쳐**
+
+![temperature 0.0](images/06-temp-0.png)
+
+![temperature 1.0](images/06-temp-1.png)
+
+### 7. max-tokens 변경 비교
+
+**명령문**
+
+```powershell
+python main.py pr --max-tokens 50
+```
+
+**설명**
+
+응답 길이를 50 토큰으로 제한했다. 답이 중간에 잘려 경고가 출력되고, 빠진 섹션은 후처리에서 `- (작성 필요)`로 채워지는 것을 확인했다.
+
+- 관찰한 내용: (작성)
+
+**결과 캡쳐**
+
+![max-tokens 50 결과](images/07-max-tokens.png)
+
+### 8. 오류 상황: API Key 미설정
+
+**명령문**
+
+```powershell
+Remove-Item Env:AI_API_KEY
+python main.py commit
+```
+
+**설명**
+
+환경변수가 없으면 API를 호출하지 않고 설정 방법을 안내한 뒤 종료한다.
+
+**결과 캡쳐**
+
+![API Key 미설정](images/08-no-key.png)
+
+### 9. 오류 상황: 잘못된 API Key
+
+**명령문**
+
+```powershell
+$env:AI_API_KEY="wrong-key"
+python main.py commit
+```
+
+**설명**
+
+서버가 401을 돌려주고, 프로그램은 "인증 실패"라는 원인과 함께 오류 메시지를 출력한다.
+
+**결과 캡쳐**
+
+![잘못된 API Key](images/09-bad-key.png)
+
+### 10. 변경 사항이 없는 경우
+
+**명령문**
+
+```powershell
+git status
+python main.py commit
+```
+
+**설명**
+
+모든 변경을 커밋한 상태에서 실행했다. "변경 사항이 없습니다"를 출력하고 API를 호출하지 않는다.
+
+**결과 캡쳐**
+
+![변경 사항 없음](images/10-no-change.png)
+
+### 11. GitHub에 push 및 PR 작성
+
+**명령문**
+
+```powershell
+git push -u origin feature/task8
+```
+
+**설명**
+
+작업 브랜치를 push하고, 4번에서 생성한 PR 제목과 본문을 붙여넣어 GitHub에서 PR을 만들었다.
+
+- PR 링크: (작성)
+- AI 초안에서 고친 부분: (작성)
+
+**결과 캡쳐**
+
+![GitHub PR 화면](images/11-github-pr.png)
