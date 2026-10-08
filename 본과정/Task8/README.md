@@ -744,17 +744,105 @@ if not api_key and not args.dry_run:
 **명령문**
 
 ```powershell
+Add-Content test_9.txt "bad key test"
+$realKey = $env:AI_API_KEY
 $env:AI_API_KEY="wrong-key"
 python main.py commit
+$env:AI_API_KEY = $realKey
+Remove-Item test_9.txt
 ```
+
+- 1행: 변경이 없으면 AI 호출 전에 종료되므로, 호출 단계까지 가도록 임시 파일을 하나 만들었다.
+- 2행: 진짜 키를 `$realKey`에 잠시 보관했다.
+- 3~4행: 틀린 키를 넣고 실행했다.
+- 5~6행: 실습 후 진짜 키로 되돌리고 임시 파일을 지웠다.
 
 **설명**
 
-서버가 401을 돌려주고, 프로그램은 "인증 실패"라는 원인과 함께 오류 메시지를 출력한다.
+형식만 갖춘 틀린 키(`wrong-key`)로 `commit`을 실행했다.
+
+- `[INFO] Git status 수집 완료: 1개 파일 변경 감지`: 임시 파일 `test_9.txt`가 새 파일(`??`)로 잡혔다.
+- `[INFO] Git diff 수집 완료: 0줄`: 새 파일은 아직 `git add`하지 않아 `git diff HEAD`에는 나오지 않는다. 그래도 변경 파일이 1개 있어 종료하지 않고 다음 단계로 진행했다.
+- `[INFO] AI API 요청 중...`: 실제로 서버에 요청을 보냈다.
+- `[ERROR] AI API 호출에 실패했습니다: HTTP 401 인증 실패(API Key를 확인하세요): invalid x-api-key`
+
+마지막 오류 줄은 세 부분으로 되어 있다.
+
+| 부분 | 내용 | 만든 곳 |
+| --- | --- | --- |
+| `HTTP 401` | 서버가 돌려준 상태 코드 | 서버 |
+| `인증 실패(API Key를 확인하세요)` | 상태 코드를 사람이 읽을 말로 바꾸고 할 일을 안내 | 프로그램 (`describe_http_error`) |
+| `invalid x-api-key` | 서버가 응답 본문에 담아 보낸 원인 설명 | 서버 |
+
+서버의 원래 메시지만 보여 주면 영어 문구만 남고, 프로그램이 정한 문구만 보여 주면 서버가 알려 준 구체적인 원인이 빠진다. 둘을 함께 보여 줘서 "무엇이 잘못됐고 무엇을 하면 되는지"를 한 줄로 알 수 있게 했다.
+
+- `AI API 호출 횟수: 1회` 줄은 나오지 않는다. 이 줄은 호출이 **성공했을 때만** 출력된다.
+- 프로그램이 예외로 멈추지 않고(Traceback 없음) 정리된 메시지를 낸 뒤 종료 코드 1로 끝났다.
+- 인증에 실패한 요청은 비용이 청구되지 않는다.
 
 **결과 캡쳐**
 
 ![잘못된 API Key](images/09-bad-key.png)
+
+**프로그램 흐름**
+
+8번(키 없음)은 Git 수집 전에 멈췄지만, 9번은 키가 "있기는 하므로" AI 호출까지 진행한 뒤 서버의 거절을 받고 멈춘다. 키가 맞는지는 서버에 보내 봐야 알 수 있기 때문이다.
+
+| 순서 | 호출되는 함수 | 이번 실행에서 |
+| --- | --- | --- |
+| 1 | `parse_args()` | `args.command = "commit"` |
+| 2 | `os.environ.get("AI_API_KEY")` | `"wrong-key"`가 있어 통과 |
+| 3 | `collect_status()` → `run_git()` | 변경 파일 1개 (`?? test_9.txt`) |
+| 4 | `collect_diff()` → `run_git()` | 0줄 |
+| - | 변경 유무 확인 | 변경 파일이 있어 통과 |
+| 5 | `mask_sensitive()`, `limit_diff()` | 건너뜀 (`--safe-mode` 없음) |
+| 6 | `build_user_prompt()` | 프롬프트 조립 (diff 자리에는 "새로 추가된 미추적 파일만 있음" 안내) |
+| 7 | `call_ai()` → `describe_http_error()` | 서버가 401 반환 → **오류 출력 후 종료 (코드 1)** |
+| - | `polish_commit()`, `print_block()` | 도달하지 않음 |
+
+8번과 비교
+
+| | 8번 (키 없음) | 9번 (틀린 키) |
+| --- | --- | --- |
+| 멈추는 곳 | 2. 키 확인 | 7. `call_ai()` |
+| `[INFO] Git ... 수집 완료` 줄 | 없음 | 있음 |
+| 서버에 요청 | 보내지 않음 | 보냈고 서버가 거절 |
+| 원인을 판단한 곳 | 프로그램 | 서버 |
+
+**6. `build_user_prompt()` : diff가 비었을 때**
+
+- diff가 0줄이면 `[git diff]` 자리에 "(diff 없음: 새로 추가된 미추적 파일만 있음)"을 넣는다. AI가 빈칸을 보고 엉뚱한 추측을 하지 않도록, 왜 비었는지 알려 주는 것이다.
+
+**7. `call_ai()` : HTTP 오류 처리**
+
+요청을 보내는 부분은 정상일 때와 같다. 서버가 401로 답하면 `urllib`이 `HTTPError` 예외를 일으키고, 아래 코드가 이를 잡는다.
+
+```python
+except urllib.error.HTTPError as exc:
+    raise ApiError(describe_http_error(exc))
+```
+
+`describe_http_error()`는 두 가지를 꺼내 한 문장으로 만든다.
+
+```python
+detail = json.loads(exc.read().decode("utf-8"))["error"]["message"]   # 서버 설명: "invalid x-api-key"
+reasons = {401: "인증 실패(API Key를 확인하세요)", 404: ..., 429: ...}
+return f"HTTP {exc.code} {reason}: {detail}"
+```
+
+- `exc.code`: 상태 코드 401
+- `exc.read()`: 서버가 보낸 응답 본문(JSON). 그 안의 `error.message`가 `invalid x-api-key`다. 본문을 읽지 못하면 대신 짧은 기본 설명을 쓴다.
+- `reasons`: 자주 나오는 상태 코드마다 사람이 할 일을 적어 둔 표다. 목록에 없는 코드는 500번대면 "서버 오류", 그 외는 "요청 실패"로 표시한다.
+
+이렇게 만든 문장은 `ApiError`라는 이 프로그램 전용 예외에 담겨 `main()`으로 올라가고, `main()`이 받아서 출력하고 끝낸다.
+
+```python
+except ApiError as exc:
+    error(f"AI API 호출에 실패했습니다: {exc}")
+    return 1
+```
+
+예외를 이렇게 한 단계씩 넘기는 이유는 역할을 나누기 위해서다. `call_ai()`는 "무엇이 실패했는지"만 정리하고, 화면 출력과 종료는 `main()`이 한곳에서 맡는다. 네트워크 오류(`URLError`)와 시간 초과(`TimeoutError`)도 같은 길로 올라와 같은 형식의 `[ERROR]` 줄로 출력된다.
 
 ### 10. 변경 사항이 없는 경우
 
