@@ -916,14 +916,36 @@ if not status_lines and not diff.strip():
 
 ```powershell
 git push -u origin task8
+python main.py pr --base c9c12f1
 ```
+
+- 1행: 작업 브랜치 `task8`을 GitHub에 올렸다. `-u`로 GitHub의 `task8`과 연결해 두어 이후에는 `git push`만으로 올릴 수 있다.
+- 2행: PR 본문으로 쓸 초안을 만들었다. `c9c12f1`은 `task8`이 갈라져 나온 `main`의 커밋(Task-7)이다. 이 커밋과 비교해 PR에 들어간 변경 전체를 기준으로 초안을 만들었다.
 
 **설명**
 
-작업 브랜치를 push하고, 4번에서 생성한 PR 제목과 본문을 붙여넣어 GitHub에서 PR을 만들었다.
+GitHub에서 `main` ← `task8` PR을 만들고 병합했다.
 
 - PR 링크: https://github.com/x0cloud69/Codyssey_KY/pull/1
-- AI 초안에서 고친 부분: 실습 6~10번 추가 내용이 빠져 있어 What에 추가", “How to Test의 명령을 실제 실행한 순서로 수정
+- 커밋 9개, 변경 파일 21개, 상태 Merged
+- 병합 후 `git checkout main`, `git pull`로 PC의 `main`도 최신 상태로 맞췄다.
+
+PR 본문은 이 도구로 만든 초안(`python main.py pr --base c9c12f1`)을 검토해 고친 뒤 넣었다. 처음 PR을 만들 때 본문에 초안이 아닌 다른 글이 들어가 Why / What / How to Test 섹션이 빠졌고, 병합 후 GitHub에서 본문을 수정했다.
+
+`--base main` 대신 커밋 번호를 쓴 이유: 병합 후에는 `main`에 이미 `task8`의 작업이 모두 들어 있어 `main`과 비교하면 차이가 없다. 그래서 병합 전 `main`의 마지막 커밋을 기준으로 지정했다. `--base`에는 브랜치 이름뿐 아니라 커밋 번호도 쓸 수 있다.
+
+**AI 초안 → 최종 PR 변경점**
+
+| 위치 | AI 초안 | 최종 PR | 고친 이유 |
+| --- | --- | --- | --- |
+| Why 2번째 불릿 | VS Code 디버거에서 Task8을 실행할 수 있도록 launch.json에 설정을 추가 | 디버거로 프로그램 흐름을 한 줄씩 따라가며 확인하기 위함 | "무엇을 했는지"는 What에 속한다. Why에는 "왜 했는지"를 적어야 해서 이유로 바꿨다 |
+| What 1번째 불릿 | 11개 실습 사례 | 실습 1~10번 결과와 11번 항목 | 병합 시점에 11번은 PR 링크와 결과가 비어 있어 완성된 실습이 아니었다 |
+| What 1번째 불릿 | "상 세히" | "상세히" | 터미널 줄바꿈으로 생긴 띄어쓰기를 고쳤다 |
+| What (추가) | 없음 | `images/`에 실습 결과 캡쳐 이미지 추가 | 변경 파일 20개 중 상당수가 이미지인데 언급이 없었다 |
+| What (추가) | 없음 | `main.py`의 `run_git()`, `collect_status()`에 git 옵션과 subprocess 사용법 주석 추가 | diff에 있는 변경인데 빠져 있었다 |
+| How to Test (추가) | 없음 | `main` 브랜치에서 `python main.py pr --base main` 실행 시 "커밋된 차이가 없습니다"로 조기 종료되는지 확인 | What에 적은 조기 종료 로직을 확인하는 방법이 없었다 |
+
+AI 초안은 diff에 있는 내용을 대부분 정확하게 담았다. 다만 이미지와 주석처럼 **덜 눈에 띄는 변경을 빠뜨렸고**, Why와 What의 구분이 섞였다. 그래서 초안을 그대로 쓰지 않고 실제 diff와 대조해 빠진 항목을 채우고 섹션의 역할에 맞게 옮겼다.
 
 **결과 캡쳐**
 
