@@ -767,11 +767,60 @@ python main.py commit
 
 **설명**
 
-모든 변경을 커밋한 상태에서 실행했다. "변경 사항이 없습니다"를 출력하고 API를 호출하지 않는다.
+모든 변경을 커밋해 `git status`가 `nothing to commit, working tree clean`인 상태에서 실행했다.
+
+- `[INFO] 변경 사항이 없습니다. 커밋 메시지를 생성하지 않고 종료합니다.`를 출력하고 끝난다.
+- `[INFO] AI API 요청 중...` 줄이 없다. 바꾼 내용이 없는데 AI를 호출하면 쓸모없는 결과에 비용만 들기 때문에, 호출 전에 멈춘다.
+- 오류가 아니라 "할 일이 없음"이므로 종료 코드는 0(정상)이다. 8번(API Key 미설정)이 1로 끝나는 것과 다르다.
+
+준비 과정에서 확인한 점
+
+- `git status`는 Task8 폴더만이 아니라 **Codyssey26 저장소 전체**를 본다. Task8 밖에 있는 `.vscode/launch.json`이 수정된 채 남아 있으면 변경으로 잡히므로, 이것까지 커밋해야 했다.
+- 새로 만들고 아직 `git add`하지 않은 파일(`??`)도 변경으로 센다. 그래서 테스트 파일(`test_secret.py`, `test_tel`)을 지우고, 흰 배경 원본 이미지(`*-white.png`)는 `.gitignore`에 넣어 Git이 무시하게 했다.
+- 프로그램은 API Key를 Git보다 먼저 검사하므로, 키가 없으면 이 메시지 대신 8번의 키 오류가 먼저 나온다. 키를 설정한 상태에서 실행해야 한다.
 
 **결과 캡쳐**
 
-![변경 사항 없음](images/10-no-change.png)
+![변경 사항 없음](images/10.no-change.png)
+
+**프로그램 흐름**
+
+`main()`이 Git 수집까지 마친 뒤, 변경 유무 확인에서 종료한다. 8번보다 한 단계 더 진행하고, AI 호출 전에 멈춘다.
+
+| 순서 | 호출되는 함수 | 이번 실행에서 |
+| --- | --- | --- |
+| 1 | `parse_args()` | `args.command = "commit"` |
+| 2 | `os.environ.get("AI_API_KEY")` | 키가 있어 통과 |
+| 3 | `collect_status()` → `run_git()` | 브랜치 `task8`, 변경 파일 0개 |
+| 4 | `collect_diff()` → `run_git()` | diff 빈 문자열 |
+| - | 변경 유무 확인 | 둘 다 비어 있음 → **안내 출력 후 종료 (코드 0)** |
+| - | `mask_sensitive()` 이후 전부 | 도달하지 않음 |
+
+**3. `collect_status()` : 변경 파일 0개**
+
+- `git status --porcelain -b`의 출력이 브랜치 줄(`## task8...origin/task8` 등) 한 줄뿐이다.
+- 첫 줄은 브랜치 정보로 쓰고, 나머지 줄을 변경 파일 목록(`status_lines`)으로 쓰는데, 나머지가 없으므로 빈 리스트 `[]`가 된다.
+
+**4. `collect_diff()` : diff 없음**
+
+- 커밋이 있는 저장소이므로 `git diff HEAD`를 실행한다. 마지막 커밋과 지금 파일이 똑같아 출력이 빈 문자열 `""`이다.
+
+**변경 유무 확인 : 안내 후 종료**
+
+```python
+target = "커밋 메시지를" if args.command == "commit" else "PR 초안을"
+if args.base and not diff.strip():
+    ...
+if not status_lines and not diff.strip():
+    info(f"변경 사항이 없습니다. {target} 생성하지 않고 종료합니다.")
+    return 0
+```
+
+- `target`: 명령에 따라 안내 문구를 바꾼다. `pr`로 실행하면 "PR 초안을 생성하지 않고"로 나온다.
+- 첫 번째 `if`는 `--base`를 썼을 때만 보는 조건이라 이번에는 건너뛴다.
+- 두 번째 `if`: 변경 파일 목록이 비어 있고(`not status_lines`), **그리고** diff도 비어 있을 때(`not diff.strip()`) 종료한다. `.strip()`으로 공백과 줄바꿈만 있는 경우도 빈 것으로 본다.
+- 두 조건을 모두 보는 이유: 새로 만든 파일만 있고 아직 `git add`하지 않은 경우, `git diff HEAD`에는 아무것도 안 나오지만 `git status`에는 `??`로 잡힌다. 이때는 변경이 있는 것이므로 종료하지 않고 진행해야 한다.
+- `return 0`: 정상 종료다. `[INFO]`로 안내하는 것도 오류가 아니라 정보이기 때문이다.
 
 ### 11. GitHub에 push 및 PR 작성
 
