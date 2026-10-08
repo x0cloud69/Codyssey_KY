@@ -45,7 +45,7 @@ MASK_PATTERNS = [
     (
         re.compile(
             r"(?i)((?:api[_-]?key|secret|token|passwd|password)\w*\s*[:=]\s*)"
-            r"(['\"]?)[^\s'\"]{6,}\2"
+            r"(['\"]?)(?!\[MASKED_)[^\s'\"]{6,}\2"
         ),
         r"\1\2[MASKED_SECRET]\2",
     ),

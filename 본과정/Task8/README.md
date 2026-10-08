@@ -370,19 +370,74 @@ AI의 답 하나에서 제목과 본문을 나누고, 본문이 템플릿 규칙
 **명령문**
 
 ```powershell
-git checkout -b feature/task8
+git checkout -b task8
 git add .
-git commit -m "(2번에서 생성한 커밋 메시지)"
+git commit -m "task8 branch"
 python main.py pr --base main
 ```
 
 **설명**
 
-작업 브랜치에서 커밋한 뒤 `main` 브랜치와의 차이(`git diff main...HEAD`)를 기준으로 PR 초안을 만들었다. `main` 브랜치에서 그대로 실행하면 차이가 없어 API를 호출하지 않고 종료한다.
+`main`에서 갈라진 작업 브랜치 `task8`을 만들어 지금까지의 작업을 커밋한 뒤, `main` 브랜치와의 차이를 기준으로 PR 초안을 만들었다. 실제로 GitHub에 PR을 올릴 때와 같은 방식이다.
+
+- 브랜치: `feature/task8`로 만들려 했으나 예전 과제에서 만든 `feature` 브랜치가 있어 이름이 충돌했고, `task8`로 만들었다.
+- 커밋 결과: `[task8 60894a6]`, 8개 파일 변경(이미지 6개 추가 포함), 417줄 추가
+- 수집 결과: 현재 브랜치 `task8`, `main...HEAD` 차이 488줄
+- 생성된 제목: `docs: Task8 실습 기록 및 디버그 설정 추가`
+- 본문: Why 2개, What 5개, How to Test 5개 불릿으로 세 섹션이 모두 채워짐
 
 **결과 캡쳐**
 
-![--base 실행 결과](images/04-pr-base.png)
+![--base 실행 결과](images/04-task8-branch.png)
+
+**프로그램 흐름**
+
+호출 순서는 실습 3번(`pr`)과 같다. `--base main`을 주었기 때문에 **4번 `collect_diff()`가 가져오는 diff가 달라지는 것**이 핵심이다.
+
+| 순서 | 호출되는 함수 | 이번 실행에서 |
+| --- | --- | --- |
+| 1 | `parse_args()` | `args.command = "pr"`, `args.base = "main"` |
+| 2 | `os.environ.get("AI_API_KEY")` | 키가 있어 통과 |
+| 3 | `collect_status()` → `run_git()` | 브랜치 `task8`, 아직 커밋하지 않은 파일 1개 |
+| 4 | `collect_diff()` → `run_git()` | `git diff main...HEAD` 실행, 488줄 |
+| - | `--base` 차이 확인 | 차이가 있어 통과 |
+| 5 | `mask_sensitive()`, `limit_diff()` | 건너뜀 (`--safe-mode` 없음) |
+| 6 | `build_user_prompt()` | 프롬프트 조립, 시스템 프롬프트는 `PR_SYSTEM_PROMPT` |
+| 7 | `call_ai()` | AI API 1회 호출 |
+| 8 | `polish_pr()` → `strip_code_fence()`, `clean_title()` | 제목 분리, 섹션 검증과 후처리 |
+| 9 | `print_block()` 2회 | PR 제목과 PR 본문을 각각 출력 |
+
+**1. `parse_args()` : `--base` 옵션 해석과 검사**
+
+- `--base main`이 `args.base = "main"`으로 들어간다.
+- `--base`는 PR에서만 의미가 있으므로, `commit` 명령과 함께 쓰면 여기서 "`--base`는 pr 명령에서만 쓸 수 있습니다" 오류를 내고 끝난다.
+
+**3. `collect_status()` : 브랜치 이름이 `task8`로 바뀜**
+
+- `git status --porcelain -b`의 첫 줄이 `## task8`이 되어, `[INFO] 현재 브랜치: task8`이 출력된다.
+- "1개 파일 변경 감지"는 커밋 후에도 남아 있는, 아직 커밋하지 않은 파일 수다. `--base`를 쓸 때는 이 파일의 내용이 AI에게 전달되는 diff에는 들어가지 않는다(아래 4번 참고).
+
+**4. `collect_diff()` : 비교 기준이 브랜치로 바뀜**
+
+`--base` 유무에 따라 실행하는 git 명령이 달라진다.
+
+| 상황 | 실행 명령 | 가져오는 내용 |
+| --- | --- | --- |
+| `--base` 없음 (실습 2, 3번) | `git diff HEAD` | 마지막 커밋 이후 아직 **커밋하지 않은** 변경 |
+| `--base main` (이번) | `git diff main...HEAD` | `main`에서 갈라진 뒤 `task8`에 **커밋한** 변경 전체 |
+
+- `main...HEAD`의 점 세 개는 "두 브랜치가 갈라진 지점부터 지금 브랜치(`HEAD`)까지"를 뜻한다. 그사이 `main`에 다른 커밋이 쌓여도 그 내용은 섞이지 않고, 이 브랜치에서 한 작업만 나온다.
+- PR은 "이 브랜치를 `main`에 합치면 무엇이 바뀌는가"를 설명하는 글이므로, 이 방식이 실제 PR 내용과 일치한다.
+
+**`--base` 차이 확인 : 차이가 없으면 API를 호출하지 않음**
+
+- `main()`에서 `args.base`가 있는데 diff가 비어 있으면 "'main' 브랜치와 현재 브랜치 사이에 커밋된 차이가 없습니다"를 출력하고 종료한다.
+- `main` 브랜치에서 `--base main`을 실행하거나, 작업 브랜치를 만들고 아직 커밋하지 않은 경우가 여기에 해당한다. 내용 없이 AI를 호출해 비용을 쓰는 것을 막기 위한 검사다.
+- 이번에는 커밋된 차이가 488줄 있어 통과했다.
+
+**6~9. 이후 단계**
+
+프롬프트 조립, AI 호출, `polish_pr()`의 섹션 검증, 출력 방식은 실습 3번과 같다. 이번에는 제목이 80자 이내였고 세 섹션에 불릿이 모두 있어 경고가 출력되지 않았다.
 
 ### 5. safe-mode 켜기/끄기 비교
 
@@ -395,12 +450,30 @@ python main.py commit --safe-mode --dry-run
 
 **설명**
 
-테스트용으로 이메일과 API Key 형태의 문자열을 넣은 뒤 실행했다. safe-mode를 켜면 해당 값이 `[MASKED_EMAIL]`, `[MASKED_API_KEY]`로 바뀌고, diff가 10개 파일 · 200줄로 제한되는 것을 확인했다.
+실제 과제 저장소를 건드리지 않도록 테스트용 저장소(`safe-demo`)를 따로 만들어 실행했다. 비교가 잘 보이도록 아래처럼 변경을 준비했다.
 
-- 마스킹 건수: (작성)
-- 생략된 파일/줄 수: (작성)
+- `app_config.py`: 가짜 API Key, 이메일, 비밀번호, 휴대폰 번호 4줄 추가
+- `src/module_01.py` ~ `module_11.py`: 11개 파일에 25줄씩 추가 (총 12개 파일, diff 362줄)
+
+`--dry-run`을 함께 써서 API는 호출하지 않고, AI에게 **전송될 내용**만 비교했다.
+
+| 항목 | safe-mode 끔 | safe-mode 켬 |
+| --- | --- | --- |
+| API Key `sk-ant-api03-...` | 그대로 전송 | `[MASKED_API_KEY]` |
+| 이메일 `admin@example.com` | 그대로 전송 | `[MASKED_EMAIL]` |
+| 비밀번호 `p@ssw0rd-1234` | 그대로 전송 | `[MASKED_SECRET]` |
+| 휴대폰 `010-1234-5678` | 그대로 전송 | `[MASKED_PHONE]` |
+| 전송 파일 수 | 12개 | 10개 (2개 생략) |
+| 전송 diff 줄 수 | 362줄 | 200줄 (162줄 생략) |
+
+- 마스킹 건수: 4건 (넣은 민감정보 4개가 모두 가려짐)
+- 생략된 파일/줄 수: 파일 2개, 이후 98줄 (아래 흐름 설명 참고)
+
+safe-mode를 끄면 민감정보가 그대로 외부 AI 서버로 전송된다. 켜면 가려진 상태로 전송되고, 보내는 양도 줄어 비용도 줄어든다. 대신 diff 일부가 빠지므로 AI가 변경 내용을 덜 알고 쓰게 된다.
 
 **결과 캡쳐**
+
+출력이 길어 System Prompt, 파일 목록, `src/module_*.py`의 diff는 생략 표시로 줄였다. 위쪽의 `[INFO]` 줄과 `app_config.py` 부분은 출력 그대로다.
 
 safe-mode 끔
 
@@ -409,6 +482,55 @@ safe-mode 끔
 safe-mode 켬
 
 ![safe-mode 켬](images/05-safe-on.png)
+
+**프로그램 흐름**
+
+두 실행 모두 `--dry-run`이라 실습 1번과 같은 순서로 진행되고, safe-mode를 켰을 때만 **5번 단계가 실행되는 것**이 차이다.
+
+| 순서 | 호출되는 함수 | safe-mode 끔 | safe-mode 켬 |
+| --- | --- | --- | --- |
+| 1 | `parse_args()` | `args.safe_mode = False` | `args.safe_mode = True` |
+| 2 | `os.environ.get("AI_API_KEY")` | 통과 (`--dry-run`) | 통과 (`--dry-run`) |
+| 3 | `collect_status()` → `run_git()` | 12개 파일 | 12개 파일 |
+| 4 | `collect_diff()` → `run_git()` | 362줄 | 362줄 |
+| 5 | `mask_sensitive()` → `limit_diff()` | 건너뜀 | **실행** |
+| 6 | `build_user_prompt()` | 원본 diff로 조립 | 가공된 diff로 조립 |
+| 7 | `print_block()` 2회 | 출력 후 종료 | 출력 후 종료 |
+
+3, 4번에서 수집하는 양은 같다. safe-mode는 **수집한 뒤, AI에게 보내기 전에** diff를 가공하는 단계다.
+
+**5-1. `mask_sensitive()` : 민감정보 가리기**
+
+- `MASK_PATTERNS`에 등록된 정규표현식을 위에서부터 하나씩 적용해, 찾은 값을 정해진 글자로 바꾼다.
+- `pattern.subn()`은 바꾼 결과와 함께 몇 건을 바꿨는지 돌려준다. 이 숫자를 모두 더한 것이 `마스킹 4건`이다.
+
+| 패턴 | 찾는 형태 | 바뀌는 글자 |
+| --- | --- | --- |
+| API Key | `sk-ant-...`, `sk-...`, `AIza...`, `AKIA...`, `ghp_...` | `[MASKED_API_KEY]` 등 |
+| Bearer 토큰 | `Bearer 긴문자열` | `[MASKED_TOKEN]` |
+| 비밀값 | `password`, `secret`, `token`, `api_key`로 끝나는 이름에 `=` 또는 `:`로 넣은 값 | `[MASKED_SECRET]` |
+| 이메일 | `아이디@도메인.com` | `[MASKED_EMAIL]` |
+| 휴대폰 번호 | `010-1234-5678` 형태 | `[MASKED_PHONE]` |
+
+- 이번 실행에서 `ANTHROPIC_API_KEY` 줄은 값이 `sk-ant-`로 시작해 API Key 패턴에, `DB_PASSWORD` 줄은 이름에 `PASSWORD`가 있어 비밀값 패턴에 걸렸다.
+- 정규표현식 기반이라 정해진 형태가 아닌 민감정보(예: 이름 없이 적힌 주민번호, 사내 서버 주소)는 잡지 못한다. 그래서 `--dry-run`으로 실제 전송 내용을 확인하는 습관이 함께 필요하다.
+
+**5-2. `limit_diff()` : 전송 분량 제한**
+
+두 단계로 자른다.
+
+1. **파일 수 제한**: diff를 `diff --git` 줄을 기준으로 파일별로 나눈 뒤 앞의 10개만 남긴다. 12개 중 2개(`module_10.py`, `module_11.py`)가 빠졌다.
+2. **줄 수 제한**: 남은 10개 파일의 diff는 298줄이었고, 이를 앞에서부터 200줄까지만 남겼다. 98줄이 빠졌다.
+
+그래서 메시지가 `파일 2개 생략, 98줄 생략`으로 나오고, 처음 362줄에서 실제로 전송된 것은 200줄이다. 잘린 사실은 diff 맨 끝에 `[... safe-mode: 파일 2개 생략, 98줄 생략]` 한 줄로 붙여 AI에게도 알린다. 그래야 AI가 diff가 전부라고 오해하지 않는다.
+
+**5-3. 결과 안내**
+
+`main()`이 두 함수의 결과를 모아 `[INFO] safe-mode 적용: 마스킹 4건, 파일 2개 생략, 98줄 생략` 한 줄로 출력한다. safe-mode를 끈 쪽에는 이 줄이 없다.
+
+**실습 중 고친 점**
+
+처음 실행했을 때는 API Key 한 줄이 두 번 세어져 `마스킹 5건`으로 나왔다. API Key 패턴이 값을 `[MASKED_API_KEY]`로 바꾼 뒤, 이름에 `API_KEY`가 들어 있어 비밀값 패턴이 그 결과를 다시 `[MASKED_SECRET]`으로 바꿨기 때문이다. 비밀값 패턴이 이미 `[MASKED_`로 시작하는 값은 건너뛰도록 정규표현식에 조건(`(?!\[MASKED_)`)을 추가해, 건수가 실제 개수와 같은 4건으로 나오고 API Key도 `[MASKED_API_KEY]`로 정확히 표시되게 했다.
 
 ### 6. temperature 변경 비교
 
@@ -506,7 +628,7 @@ python main.py commit
 **명령문**
 
 ```powershell
-git push -u origin feature/task8
+git push -u origin task8
 ```
 
 **설명**
