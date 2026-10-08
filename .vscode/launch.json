@@ -16,6 +16,15 @@
       "module": "mini_redis",
       "console": "integratedTerminal",
       "cwd": "${workspaceFolder}/본과정/Task4"
+    },
+    {
+      "name": "Task8 commit (dry-run)",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/본과정/Task8/main.py",
+      "args": ["commit", "--dry-run"],
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}/본과정/Task8"
     }
   ]
 }
