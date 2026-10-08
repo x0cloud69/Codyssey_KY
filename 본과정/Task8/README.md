@@ -922,8 +922,8 @@ git push -u origin task8
 
 작업 브랜치를 push하고, 4번에서 생성한 PR 제목과 본문을 붙여넣어 GitHub에서 PR을 만들었다.
 
-- PR 링크: (작성)
-- AI 초안에서 고친 부분: (작성)
+- PR 링크: https://github.com/x0cloud69/Codyssey_KY/pull/1
+- AI 초안에서 고친 부분: 실습 6~10번 추가 내용이 빠져 있어 What에 추가", “How to Test의 명령을 실제 실행한 순서로 수정
 
 **결과 캡쳐**
 
