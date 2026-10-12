@@ -1,0 +1,23 @@
+[B07] 지표 1: 월별 매출 추이와 전월 대비 증감 | 매출이 늘고 있는지 줄고 있는지 확인한다
+======================================================================
+
+sqlite> SELECT month,
+   ...>        revenue,
+   ...>        revenue - LAG(revenue) OVER (ORDER BY month) AS diff_from_prev_month
+   ...> FROM (
+   ...>     SELECT SUBSTR(o.ordered_at, 1, 7)        AS month,
+   ...>            SUM(oi.quantity * oi.unit_price)  AS revenue
+   ...>     FROM orders o
+   ...>     INNER JOIN order_item oi ON oi.order_id = o.id
+   ...>     WHERE o.status <> 'CANCELED'
+   ...>     GROUP BY SUBSTR(o.ordered_at, 1, 7)
+   ...> ) monthly
+   ...> ORDER BY month;
++---------+---------+----------------------+
+| month   | revenue | diff_from_prev_month |
++---------+---------+----------------------+
+| 2026-08 | 48800   | NULL                 |
+| 2026-09 | 94300   | 45500                |
+| 2026-10 | 81300   | -13000               |
++---------+---------+----------------------+
+(3 rows)

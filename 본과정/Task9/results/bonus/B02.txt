@@ -1,0 +1,28 @@
+[B02] 서브쿼리 방식 | 안쪽부터 "케이크 메뉴 -> 그 메뉴가 담긴 주문 -> 그 주문의 고객" 순으로 좁혀 나감
+======================================================================
+
+sqlite> SELECT cu.id, cu.name
+   ...> FROM customer cu
+   ...> WHERE cu.id IN (
+   ...>     SELECT o.customer_id
+   ...>     FROM orders o
+   ...>     WHERE o.id IN (
+   ...>         SELECT oi.order_id
+   ...>         FROM order_item oi
+   ...>         WHERE oi.menu_id IN (
+   ...>             SELECT m.id
+   ...>             FROM menu m
+   ...>             WHERE m.category_id = (SELECT id FROM category WHERE name = '케이크')
+   ...>         )
+   ...>     )
+   ...> )
+   ...> ORDER BY cu.id;
++----+--------+
+| id | name   |
++----+--------+
+| 2  | 이서연 |
+| 4  | 최지우 |
+| 6  | 강서윤 |
+| 7  | 조은우 |
++----+--------+
+(4 rows)

@@ -1,0 +1,20 @@
+[B01] JOIN 방식 | 4개 테이블을 이어 붙인 뒤, 한 고객이 여러 번 나올 수 있어 DISTINCT로 중복 제거
+======================================================================
+
+sqlite> SELECT DISTINCT cu.id, cu.name
+   ...> FROM customer cu
+   ...> INNER JOIN orders     o  ON o.customer_id = cu.id
+   ...> INNER JOIN order_item oi ON oi.order_id   = o.id
+   ...> INNER JOIN menu       m  ON m.id          = oi.menu_id
+   ...> INNER JOIN category   c  ON c.id          = m.category_id
+   ...> WHERE c.name = '케이크'
+   ...> ORDER BY cu.id;
++----+--------+
+| id | name   |
++----+--------+
+| 2  | 이서연 |
+| 4  | 최지우 |
+| 6  | 강서윤 |
+| 7  | 조은우 |
++----+--------+
+(4 rows)

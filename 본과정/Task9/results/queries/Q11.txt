@@ -1,0 +1,24 @@
+[Q11] 집계 | 가장 많이 팔린 메뉴 TOP 5(판매 수량 기준)와 매출을 확인한다 (HAVING으로 2개 이상 팔린 메뉴만)
+======================================================================
+
+sqlite> SELECT m.name,
+   ...>        SUM(oi.quantity)                  AS sold_qty,
+   ...>        SUM(oi.quantity * oi.unit_price)  AS revenue
+   ...> FROM order_item oi
+   ...> INNER JOIN menu   m ON m.id = oi.menu_id
+   ...> INNER JOIN orders o ON o.id = oi.order_id
+   ...> WHERE o.status <> 'CANCELED'
+   ...> GROUP BY m.id, m.name
+   ...> HAVING SUM(oi.quantity) >= 2
+   ...> ORDER BY sold_qty DESC, revenue DESC
+   ...> LIMIT 5;
++------------+----------+---------+
+| name       | sold_qty | revenue |
++------------+----------+---------+
+| 아메리카노 | 6        | 27000   |
+| 소금빵     | 5        | 17500   |
+| 마카롱     | 5        | 15000   |
+| 카페라떼   | 4        | 20000   |
+| 치즈케이크 | 3        | 19500   |
++------------+----------+---------+
+(5 rows)

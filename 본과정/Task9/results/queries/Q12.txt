@@ -1,0 +1,24 @@
+[Q12] 집계 | 월별 주문 건수, 매출, 주문당 평균 금액(객단가)을 확인한다 (취소 제외)
+======================================================================
+
+sqlite> SELECT SUBSTR(t.ordered_at, 1, 7)  AS month,
+   ...>        COUNT(*)                    AS order_count,
+   ...>        SUM(t.order_total)          AS revenue,
+   ...>        ROUND(AVG(t.order_total))   AS avg_order_amount
+   ...> FROM (
+   ...>     SELECT o.id, o.ordered_at, SUM(oi.quantity * oi.unit_price) AS order_total
+   ...>     FROM orders o
+   ...>     INNER JOIN order_item oi ON oi.order_id = o.id
+   ...>     WHERE o.status <> 'CANCELED'
+   ...>     GROUP BY o.id, o.ordered_at
+   ...> ) t
+   ...> GROUP BY SUBSTR(t.ordered_at, 1, 7)
+   ...> ORDER BY month;
++---------+-------------+---------+------------------+
+| month   | order_count | revenue | avg_order_amount |
++---------+-------------+---------+------------------+
+| 2026-08 | 4           | 48800   | 12200.0          |
+| 2026-09 | 7           | 94300   | 13471.0          |
+| 2026-10 | 7           | 81300   | 11614.0          |
++---------+-------------+---------+------------------+
+(3 rows)

@@ -1,0 +1,14 @@
+[Q08] LEFT JOIN | 한 번도 주문된 적 없는 메뉴를 확인한다 (판매 이력이 없으면 oi 쪽이 NULL)
+======================================================================
+
+sqlite> SELECT m.id, m.name, m.price
+   ...> FROM menu m
+   ...> LEFT JOIN order_item oi ON oi.menu_id = m.id
+   ...> WHERE oi.id IS NULL
+   ...> ORDER BY m.id;
++----+--------+-------+
+| id | name   | price |
++----+--------+-------+
+| 20 | 밤라떼 | 6500  |
++----+--------+-------+
+(1 rows)

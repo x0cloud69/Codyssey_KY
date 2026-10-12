@@ -1,0 +1,26 @@
+[Q15] 인덱스 | 주문 테이블의 고객 FK·주문일시에 인덱스를 만들고, 조회 시 실제로 사용되는지 확인한다
+======================================================================
+
+sqlite> CREATE INDEX idx_orders_customer_id ON orders (customer_id);
+OK (0 rows affected)
+
+sqlite> CREATE INDEX idx_orders_ordered_at  ON orders (ordered_at);
+OK (0 rows affected)
+
+sqlite> EXPLAIN QUERY PLAN
+   ...> SELECT * FROM orders WHERE customer_id = 1;
++----+--------+---------+------------------------------------------------------------------+
+| id | parent | notused | detail                                                           |
++----+--------+---------+------------------------------------------------------------------+
+| 3  | 0      | 61      | SEARCH orders USING INDEX idx_orders_customer_id (customer_id=?) |
++----+--------+---------+------------------------------------------------------------------+
+(1 rows)
+
+sqlite> EXPLAIN QUERY PLAN
+   ...> SELECT * FROM orders WHERE ordered_at >= '2026-10-01';
++----+--------+---------+----------------------------------------------------------------+
+| id | parent | notused | detail                                                         |
++----+--------+---------+----------------------------------------------------------------+
+| 3  | 0      | 203     | SEARCH orders USING INDEX idx_orders_ordered_at (ordered_at>?) |
++----+--------+---------+----------------------------------------------------------------+
+(1 rows)

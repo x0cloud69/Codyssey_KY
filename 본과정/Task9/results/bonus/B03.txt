@@ -1,0 +1,6 @@
+[B03] FK 위반 (자식 INSERT) | 존재하지 않는 고객(999번)의 주문을 넣으면 거부된다
+======================================================================
+
+sqlite> INSERT INTO orders (id, customer_id, ordered_at, status)
+   ...> VALUES (100, 999, '2026-10-12 11:00:00', 'ORDERED');
+ERROR: FOREIGN KEY constraint failed

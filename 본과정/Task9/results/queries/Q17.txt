@@ -1,0 +1,26 @@
+[Q17] DELETE | 취소된 주문을 삭제하고, ON DELETE CASCADE로 주문 상세도 함께 지워지는지 확인한다
+======================================================================
+
+sqlite> SELECT (SELECT COUNT(*) FROM orders)                         AS orders_before,
+   ...>        (SELECT COUNT(*) FROM order_item)                     AS items_before,
+   ...>        (SELECT COUNT(*) FROM orders WHERE status = 'CANCELED') AS canceled;
++---------------+--------------+----------+
+| orders_before | items_before | canceled |
++---------------+--------------+----------+
+| 20            | 38           | 2        |
++---------------+--------------+----------+
+(1 rows)
+
+sqlite> DELETE FROM orders
+   ...> WHERE status = 'CANCELED';
+OK (2 rows affected)
+
+sqlite> SELECT (SELECT COUNT(*) FROM orders)                         AS orders_after,
+   ...>        (SELECT COUNT(*) FROM order_item)                     AS items_after,
+   ...>        (SELECT COUNT(*) FROM orders WHERE status = 'CANCELED') AS canceled;
++--------------+-------------+----------+
+| orders_after | items_after | canceled |
++--------------+-------------+----------+
+| 18           | 36          | 0        |
++--------------+-------------+----------+
+(1 rows)

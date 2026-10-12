@@ -1,0 +1,5 @@
+[B05] FK 위반 (자식 UPDATE) | 주문 상세의 메뉴를 없는 메뉴(999번)로 바꾸는 것도 거부된다
+======================================================================
+
+sqlite> UPDATE order_item SET menu_id = 999 WHERE id = 1;
+ERROR: FOREIGN KEY constraint failed
