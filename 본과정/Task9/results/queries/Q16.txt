@@ -1,0 +1,44 @@
+[Q16] UPDATE | 누적 결제 금액(취소 제외)이 30,000원 이상인 고객을 GOLD 등급으로 승급한다
+======================================================================
+
+sqlite> SELECT id, name, grade FROM customer WHERE grade <> 'GOLD' ORDER BY id;
++----+--------+--------+
+| id | name   | grade  |
++----+--------+--------+
+| 2  | 이서연 | SILVER |
+| 3  | 박도윤 | BASIC  |
+| 5  | 정하준 | BASIC  |
+| 6  | 강서윤 | SILVER |
+| 7  | 조은우 | BASIC  |
+| 8  | 윤지민 | BASIC  |
+| 9  | 장시우 | SILVER |
+| 10 | 임수아 | BASIC  |
+| 11 | 한예준 | BASIC  |
+| 12 | 오하은 | BASIC  |
++----+--------+--------+
+(10 rows)
+
+sqlite> UPDATE customer
+   ...> SET grade = 'GOLD'
+   ...> WHERE grade <> 'GOLD'
+   ...>   AND id IN (
+   ...>       SELECT o.customer_id
+   ...>       FROM orders o
+   ...>       INNER JOIN order_item oi ON oi.order_id = o.id
+   ...>       WHERE o.status <> 'CANCELED'
+   ...>       GROUP BY o.customer_id
+   ...>       HAVING SUM(oi.quantity * oi.unit_price) >= 30000
+   ...>   );
+OK (3 rows affected)
+
+sqlite> SELECT id, name, grade FROM customer WHERE grade = 'GOLD' ORDER BY id;
++----+--------+-------+
+| id | name   | grade |
++----+--------+-------+
+| 1  | 김민준 | GOLD  |
+| 2  | 이서연 | GOLD  |
+| 4  | 최지우 | GOLD  |
+| 6  | 강서윤 | GOLD  |
+| 9  | 장시우 | GOLD  |
++----+--------+-------+
+(5 rows)

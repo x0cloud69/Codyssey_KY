@@ -1,0 +1,27 @@
+[Q10] 집계 | 고객별 주문 횟수와 총 결제 금액 랭킹을 확인한다 (취소 주문 제외, COUNT + SUM)
+======================================================================
+
+sqlite> SELECT cu.id,
+   ...>        cu.name,
+   ...>        COUNT(DISTINCT o.id)                AS order_count,
+   ...>        SUM(oi.quantity * oi.unit_price)    AS total_amount
+   ...> FROM customer cu
+   ...> INNER JOIN orders     o  ON o.customer_id = cu.id
+   ...> INNER JOIN order_item oi ON oi.order_id   = o.id
+   ...> WHERE o.status <> 'CANCELED'
+   ...> GROUP BY cu.id, cu.name
+   ...> ORDER BY total_amount DESC;
++----+--------+-------------+--------------+
+| id | name   | order_count | total_amount |
++----+--------+-------------+--------------+
+| 4  | 최지우 | 3           | 46000        |
+| 2  | 이서연 | 3           | 36300        |
+| 1  | 김민준 | 4           | 33600        |
+| 6  | 강서윤 | 2           | 32000        |
+| 9  | 장시우 | 2           | 32000        |
+| 5  | 정하준 | 1           | 14000        |
+| 10 | 임수아 | 1           | 11500        |
+| 7  | 조은우 | 1           | 11000        |
+| 3  | 박도윤 | 1           | 8000         |
++----+--------+-------------+--------------+
+(9 rows)

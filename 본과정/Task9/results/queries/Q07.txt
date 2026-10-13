@@ -1,0 +1,15 @@
+[Q07] INNER JOIN | 아직 처리되지 않은(ORDERED) 주문과 고객 연락처를 확인한다
+======================================================================
+
+sqlite> SELECT o.id AS order_id, o.ordered_at, cu.name AS customer, cu.phone
+   ...> FROM orders o
+   ...> INNER JOIN customer cu ON cu.id = o.customer_id
+   ...> WHERE o.status = 'ORDERED'
+   ...> ORDER BY o.ordered_at;
++----------+---------------------+----------+---------------+
+| order_id | ordered_at          | customer | phone         |
++----------+---------------------+----------+---------------+
+| 19       | 2026-10-12 09:00:00 | 이서연   | 010-1111-0002 |
+| 20       | 2026-10-12 10:30:00 | 장시우   | 010-1111-0009 |
++----------+---------------------+----------+---------------+
+(2 rows)

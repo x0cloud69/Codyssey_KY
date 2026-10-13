@@ -1,0 +1,32 @@
+[B08] 지표 2: 카테고리별 매출과 매출 비중(%) | 어떤 카테고리가 매출을 견인하는지 확인한다
+======================================================================
+
+sqlite> SELECT c.name                                   AS category,
+   ...>        SUM(oi.quantity * oi.unit_price)         AS revenue,
+   ...>        ROUND(100.0 * SUM(oi.quantity * oi.unit_price) /
+   ...>              (SELECT SUM(oi2.quantity * oi2.unit_price)
+   ...>               FROM order_item oi2
+   ...>               INNER JOIN orders o2 ON o2.id = oi2.order_id
+   ...>               WHERE o2.status <> 'CANCELED'), 1) AS share_pct
+   ...> FROM category c
+   ...> INNER JOIN menu       m  ON m.category_id = c.id
+   ...> INNER JOIN order_item oi ON oi.menu_id    = m.id
+   ...> INNER JOIN orders     o  ON o.id          = oi.order_id
+   ...> WHERE o.status <> 'CANCELED'
+   ...> GROUP BY c.id, c.name
+   ...> ORDER BY revenue DESC;
++----------+---------+-----------+
+| category | revenue | share_pct |
++----------+---------+-----------+
+| 커피     | 68500   | 30.5      |
+| 케이크   | 33500   | 14.9      |
+| 베이커리 | 28900   | 12.9      |
+| 스무디   | 19500   | 8.7       |
+| 샌드위치 | 15000   | 6.7       |
+| 디저트   | 15000   | 6.7       |
+| 에이드   | 12000   | 5.3       |
+| 시즌한정 | 12000   | 5.3       |
+| 논커피   | 11000   | 4.9       |
+| 티       | 9000    | 4.0       |
++----------+---------+-----------+
+(10 rows)

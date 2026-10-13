@@ -1,0 +1,5 @@
+[B04] FK 위반 (부모 DELETE) | 주문 이력이 있는 고객(1번)을 삭제하면 자식(orders)이 고아가 되므로 거부된다
+======================================================================
+
+sqlite> DELETE FROM customer WHERE id = 1;
+ERROR: FOREIGN KEY constraint failed

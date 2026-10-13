@@ -1,0 +1,18 @@
+[B09] 지표 3: 재방문율 | 주문한 고객 중 2회 이상 주문한 고객의 비율(취소 제외)
+======================================================================
+
+sqlite> SELECT COUNT(*)                                             AS ordered_customers,
+   ...>        SUM(CASE WHEN order_count >= 2 THEN 1 ELSE 0 END)    AS returning_customers,
+   ...>        ROUND(100.0 * SUM(CASE WHEN order_count >= 2 THEN 1 ELSE 0 END) / COUNT(*), 1) AS return_rate_pct
+   ...> FROM (
+   ...>     SELECT customer_id, COUNT(*) AS order_count
+   ...>     FROM orders
+   ...>     WHERE status <> 'CANCELED'
+   ...>     GROUP BY customer_id
+   ...> ) per_customer;
++-------------------+---------------------+-----------------+
+| ordered_customers | returning_customers | return_rate_pct |
++-------------------+---------------------+-----------------+
+| 9                 | 5                   | 55.6            |
++-------------------+---------------------+-----------------+
+(1 rows)

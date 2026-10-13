@@ -1,0 +1,27 @@
+[B06] 올바른 해결 | 부모(고객)를 먼저 만들고, 그 id로 자식(주문)을 넣으면 성공한다
+======================================================================
+
+sqlite> INSERT INTO customer (id, name, phone, grade, joined_at)
+   ...> VALUES (13, '신규고객', '010-1111-0013', 'BASIC', '2026-10-12');
+OK (1 rows affected)
+
+sqlite> INSERT INTO orders (id, customer_id, ordered_at, status)
+   ...> VALUES (100, 13, '2026-10-12 11:00:00', 'ORDERED');
+OK (1 rows affected)
+
+sqlite> SELECT o.id AS order_id, o.customer_id, cu.name, o.status
+   ...> FROM orders o
+   ...> INNER JOIN customer cu ON cu.id = o.customer_id
+   ...> WHERE o.id = 100;
++----------+-------------+----------+---------+
+| order_id | customer_id | name     | status  |
++----------+-------------+----------+---------+
+| 100      | 13          | 신규고객 | ORDERED |
++----------+-------------+----------+---------+
+(1 rows)
+
+sqlite> DELETE FROM orders   WHERE id = 100;
+OK (1 rows affected)
+
+sqlite> DELETE FROM customer WHERE id = 13;
+OK (1 rows affected)
