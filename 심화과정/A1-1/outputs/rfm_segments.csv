@@ -1,0 +1,5 @@
+﻿segment,customers,avg_recency,avg_frequency,avg_monetary,total_monetary
+At_Risk_or_Churned,45421,364.4,1.0,137.7,6255390.9
+Loyal,458,239.7,2.0,62.0,28408.3
+New_or_Recent,45136,111.7,1.0,138.2,6237698.4
+VIP,2343,216.5,2.1,298.8,700000.4
